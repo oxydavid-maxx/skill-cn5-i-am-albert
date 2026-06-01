@@ -47,6 +47,34 @@ _SDK_ENV: dict[str, str] = {
     "CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK": "1",
 }
 
+# Anthropic fast-mode beta header (speed="fast" + this beta per the API spec).
+FAST_MODE_BETA = "fast-mode-2026-02-01"
+
+
+def _fast_mode_enabled() -> bool:
+    """Whether fast-mode wiring should be added to built SDK options.
+
+    Gated on env ALBERT_FAST_MODE. DEFAULT "0" (off): the POC
+    (poc/fast_mode_probe.py) found fast mode is NOT reachable on this
+    CLI/subscription — the beta header is dropped for non-API-key (OAuth)
+    users and the `--speed` flag does not exist in this CLI (it crashes the
+    call). The wiring is kept env-gated so it engages automatically the day a
+    fast-mode-capable CLI/API-key environment is used, with no code change.
+    """
+    return os.environ.get("ALBERT_FAST_MODE", "0") == "1"
+
+
+def _apply_fast_mode(opts: dict[str, Any]) -> None:
+    """When fast mode is enabled, add ONLY the non-crashing beta header.
+
+    Deliberately does NOT add an extra_args `--speed` passthrough: the POC
+    proved `--speed` is an unknown CLI option that crashes the call (exit 1).
+    The beta header is the only fast-mode signal that the CLI accepts without
+    erroring (it warns + ignores it for OAuth users, which is harmless).
+    """
+    if _fast_mode_enabled():
+        opts["betas"] = [FAST_MODE_BETA]
+
 # Process-level latch: once a tool-enabled call proves tools cannot run in this
 # runtime, later calls skip the (failing, slow) tool attempt and go straight to
 # the tool-less path. Avoids burning a flaky subprocess spawn per audit call.
@@ -131,6 +159,7 @@ async def _sdk_query(
         opts_kwargs["model"] = model
     if schema is not None:
         opts_kwargs["output_format"] = {"type": "json_schema", "schema": schema}
+    _apply_fast_mode(opts_kwargs)
 
     options = ClaudeAgentOptions(**opts_kwargs)
 
@@ -406,6 +435,7 @@ class ClaudeSession:
             opts["model"] = self._model
         if self._schema is not None:
             opts["output_format"] = {"type": "json_schema", "schema": self._schema}
+        _apply_fast_mode(opts)
         return ClaudeAgentOptions(**opts)
 
     def _connect(self) -> None:
