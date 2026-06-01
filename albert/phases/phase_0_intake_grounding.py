@@ -1,5 +1,10 @@
-"""Phase 0: parse §20 input + META-research grounding (wave-1 -> reflect -> wave-2).
-Meta-research only; object-research is the cockpit's job. websearch() never raises."""
+"""Phase 0: parse §20 input + META-research grounding.
+
+Default: ONE intake-planning call proposes ALL queries (object- AND meta-level) upfront,
+then a SINGLE parallel wave runs them concurrently — no reflection round-trip, no second
+sequential wave. Set ALBERT_RESEARCH_REFLECT=1 to retain the deeper two-wave + reflection
+path. Meta-research only; object-research is the cockpit's job. websearch() never raises."""
+import os
 import sys
 from albert.errors import VisibilityContractError
 from albert.sdk_client import call_claude, websearch
@@ -8,8 +13,11 @@ from albert.models import model_for_role
 from albert.utils import load_prompt
 from albert import schemas
 
+# Single-call schema: queries (object- + meta-level) PLUS a short meta_question framing
+# string so Phase 2 has a higher-level question without a separate reflection call.
 _QUERIES_SCHEMA = {"type": "object", "properties": {
-    "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5}},
+    "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 8},
+    "meta_question": {"type": "string"}},
     "required": ["queries"]}
 
 _CARRY = ["current_answer", "original_objective", "meeting_context", "output_purpose",
@@ -27,21 +35,31 @@ def phase_0_intake_grounding(state: dict) -> dict:
            f"Domain: {state['proposal'].get('domain','')}\nMeeting: {state.get('meeting_context','')}\n"
            f"Output purpose: {state.get('output_purpose','')}\n")
     status, research, meta = "passed", [], {}
+    reflect = os.environ.get("ALBERT_RESEARCH_REFLECT") == "1"
     try:
         plan = call_claude(model=model_for_role("intake_grounding"),
                            system=load_prompt("intake_grounding"), user=ctx,
                            json_schema=_QUERIES_SCHEMA, purpose="intake_grounding")
-        # Wave-1 searches are independent — fan out in one parallel wave.
-        wave1 = parallel_map(websearch, (plan.get("queries") or [])[:5])
-        research.extend(wave1)
-        refl_ctx = ctx + "\nWave-1 results:\n" + "\n".join(
-            f"- {r['query']}: {str(r.get('results',''))[:300]}" for r in wave1)
-        # Keep the reflection call between waves (sequential dependency on wave-1).
-        meta = call_claude(model=model_for_role("intake_grounding"),
-                           system=load_prompt("search_reflection"), user=refl_ctx,
-                           json_schema=schemas.SEARCH_REFLECTION, purpose="search_reflection")
-        # Wave-2 searches are independent — fan out in one parallel wave.
-        research.extend(parallel_map(websearch, (meta.get("wave2_queries") or [])[:4]))
+        if reflect:
+            # Deeper path: two sequential waves with a reflection round-trip between them.
+            wave1 = parallel_map(websearch, (plan.get("queries") or [])[:5])
+            research.extend(wave1)
+            refl_ctx = ctx + "\nWave-1 results:\n" + "\n".join(
+                f"- {r['query']}: {str(r.get('results',''))[:300]}" for r in wave1)
+            meta = call_claude(model=model_for_role("intake_grounding"),
+                               system=load_prompt("search_reflection"), user=refl_ctx,
+                               json_schema=schemas.SEARCH_REFLECTION, purpose="search_reflection")
+            research.extend(parallel_map(websearch, (meta.get("wave2_queries") or [])[:4]))
+        else:
+            # Default path: ALL queries (object- + meta-level) in ONE concurrent wave.
+            # max_workers >= len(queries) (and >= 6) so every search starts together;
+            # the wave's wall-clock is bounded by the slowest single search, not the count.
+            queries = (plan.get("queries") or [])[:8]
+            research.extend(parallel_map(websearch, queries,
+                                         max_workers=max(6, len(queries))))
+            # Meta framing comes from the intake plan, not a separate reflection call.
+            mq = plan.get("meta_question")
+            meta = {"higher_level_question": mq} if mq else {}
     except VisibilityContractError:
         raise
     except Exception as e:
