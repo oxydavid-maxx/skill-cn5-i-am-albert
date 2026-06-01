@@ -67,6 +67,6 @@ def enforce_action_consistency(proposed: str, premature: str, drift: str, eviden
     if drift == "high" and proposed not in ("rerank", "pull_human"):
         return "rerank"                       # off-track — re-rank toward the objective
     customer_only = [e for e in (evidence or []) if e.get("who_can_answer") == "customer"]
-    if len(customer_only) >= 2 and proposed in ("synthesize", "terminal_stop", "continue_research"):
+    if len(customer_only) >= 2 and proposed not in ("push_human", "pull_human"):
         return "push_human"                   # the blocker is the customer, not more AI research
     return proposed

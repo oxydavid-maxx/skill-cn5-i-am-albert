@@ -18,3 +18,12 @@ def test_customer_residual_forces_push_or_pull():
 
 def test_consistent_action_passes_through():
     assert enforce_action_consistency("branch", premature="low", drift="low", evidence=[]) == "branch"
+
+def test_customer_residual_vetoes_pause_and_branch():
+    ev = [{"item": "x", "who_can_answer": "customer"}, {"item": "y", "who_can_answer": "customer"}]
+    assert enforce_action_consistency("pause", premature="low", drift="low", evidence=ev) == "push_human"
+    assert enforce_action_consistency("branch", premature="low", drift="low", evidence=ev) == "push_human"
+
+def test_customer_residual_keeps_pull_human():
+    ev = [{"item": "x", "who_can_answer": "customer"}, {"item": "y", "who_can_answer": "customer"}]
+    assert enforce_action_consistency("pull_human", premature="low", drift="low", evidence=ev) == "pull_human"
