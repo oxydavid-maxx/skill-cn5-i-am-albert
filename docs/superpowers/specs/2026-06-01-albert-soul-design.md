@@ -1,4 +1,10 @@
-# Albert Soul — Design Spec v0.4
+# Albert Soul — Design Spec v0.4.1
+
+<!-- v0.4.1 (2026-06-01): corrected AuditVerdict enum to continue|exhausted|rework
+(confirmed from cockpit code); added durability/moat to the soul-grade test; Phase 3
+self-critique now multi-vote to avoid the self-critique paradox; resolved the enum
+open decision. -->
+
 
 - **Skill:** `skill-cn5-i-am-albert`
 - **Repo:** `github.com/oxydavid-maxx/skill-cn5-i-am-albert`
@@ -79,7 +85,9 @@ Canonical persona in `albert/prompts/albert_persona.txt` (separately evolvable):
 Six generators: `winning` ②⑪ · `first_principle` ③④ · `timing` ⑤ · `competitor` ⑥ ·
 `owner_business` ⑦⑧⑩ · `convergence_redteam` ⑨⑪⑫. **Soul-grade test:** a question must
 (a) target decision quality not document completeness, (b) force a thesis, (c) be
-research-backed.
+research-backed, and (d) probe **durability** — not just "will it win" but "is the
+advantage durable or will it be copied/commoditized" (the moat / 7-Powers durability
+test; [Hustle Badger 7 Powers](https://www.hustlebadger.com/what-do-product-teams-do/7-powers-establishing-your-competitive-moat/)).
 
 ---
 
@@ -126,7 +134,7 @@ real telemetry, not LLM-inferred. `schemas/albert_input.schema.json`:
 **Binding target (cockpit, implemented):**
 ```python
 class AuditResult(BaseModel):
-    verdict: AuditVerdict                 # clean | challenges | exhausted
+    verdict: AuditVerdict                 # continue | exhausted | rework  (confirmed from cockpit code)
     challenges: list[AlbertChallenge]     # §17 entry shape
     weak_points: list[str]
     premature_end_risk: Risk              # low | medium | high
@@ -143,7 +151,7 @@ A2 plans to add (`missing_business_context`, `questions_albert_would_ask`,
 
 ```json
 {
-  "verdict": "clean | challenges | exhausted",
+  "verdict": "continue | exhausted | rework",
   "audited_answer": "...",
   "would_survive_leadership": true,
 
@@ -225,7 +233,7 @@ START
 | 0 Intake & Grounding | — | Parse §20 input (cockpit: current_answer + maps + readiness_scores + skeptic/source-critic output + research_state; standalone: wrap proposal). **Meta-research** wave-1 → reflect meta-question (`SEARCH_REFLECTION`) → wave-2. No object-research. |
 | 1 Ambiguity Hunt | ① | Top-3 dangerous ambiguities in the current answer. |
 | 2 Challenge Generation | ②-⑪ | `albert_challenges` in §17+§20 superset shape (status, confidence, **severity**, **current_answer_strength**, recommended_probe, meeting_ready_response …), **building on** skeptic/source-critic output (don't redo). Plus `weak_points` (list[str]), `missing_business_context`, `would_survive_leadership`. `output_purpose` tunes emphasis. Exhaustion — no fixed count. |
-| 3 Self-Critique Audit | ⑪ | Adversarial auditor classifies each challenge sharp / ADDRESSABLE (→ regenerate) / RESIDUAL; verdict REWORK/EXHAUSTED; capped loop to Phase 2. Audits sharpness only. |
+| 3 Self-Critique Audit | ⑪ | Adversarial auditor classifies each challenge sharp / ADDRESSABLE (→ regenerate) / RESIDUAL; verdict REWORK/EXHAUSTED; capped loop to Phase 2. Audits sharpness only. **Multi-vote to avoid the self-critique paradox** (a single same-model critic hallucinates flaws to justify itself, ↓15-40% accuracy when the answer was actually fine — [Snorkel](https://snorkel.ai/blog/the-self-critique-paradox-why-ai-verification-fails-where-its-needed-most/), [arXiv 2412.12509](https://arxiv.org/pdf/2412.12509)): run N=3 critique votes (varied seed / diverse lens); a challenge is ADDRESSABLE only if ≥2 votes agree. The capped rework (`ALBERT_MAX_REWORK=2`) bounds residual churn. |
 | 4 Signals · Action · Gate | ⑦⑨⑫ | Rule-grounded `premature_end_risk` / `research_drift_risk` + ranked `recommended_next_probe`. LLM proposes `recommended_next_action` (COS `Decision` enum) + `rationale`; **`signals.py` enforces action-consistency** with the signals. `decision_gate` (owners) + `reproducible_judgment`. |
 | 5 Assemble & Render | output | Compute `verdict` (AuditVerdict) + `degraded`; assemble the AuditResult-aligned superset JSON. Standalone: derive `verdict_standalone` + `light` (degraded guard); render markdown report + email + stdout token. |
 
@@ -316,8 +324,11 @@ skill-cn5-i-am-albert/
 ---
 
 ## 10. Open Decisions (resolve in writing-plans)
-- Confirm the exact `AuditVerdict` enum values (`clean|challenges|exhausted` assumed) and
-  `Decision` enum values against the cockpit code before freezing the contract test.
+- ~~Confirm the exact enum values against the cockpit code.~~ **RESOLVED 2026-06-01**
+  (read from `phase1-implementation-plan.md`): `AuditVerdict = continue | exhausted | rework`;
+  `Decision = continue_research | branch | rerank | pull_human | push_human | synthesize | pause | terminal_stop`;
+  `Risk = low | medium | high`; `ChallengeStatus` = the 8 values in §4; `Classification = addressable | residual`
+  (Albert's internal phase-3 classification should use these lowercase values to share the cockpit's vocabulary).
 - Copy sibling infra (not shared lib). Strong roles: `challenge_generation`, `self_critique_audit`,
   `verdict_render`, and `signals_action_gate` (action recommendation is reasoning-heavy).
 - Phase 0 meta-research depth: wave-1 + one reflection + wave-2.
