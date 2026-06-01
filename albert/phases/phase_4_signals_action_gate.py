@@ -16,7 +16,8 @@ _STUB = {"premature_end_atoms": {"open_high_impact_challenges": 1, "new_info_rat
          "drift_atoms": {}, "recommended_next_probe": [], "missing_evidence": [],
          "questions_albert_would_ask": [], "proposed_next_action": "continue_research", "rationale": "(LLM unavailable)",
          "decision_gate": {"can_decide_now": [], "cannot_decide": ["(LLM unavailable)"], "owners": []},
-         "reproducible_judgment": ""}
+         "reproducible_judgment": "",
+         "verdict_standalone": "產品定義不完整", "light": "red", "readiness_score_delta": -2}
 
 
 def phase_4_signals_action_gate(state: dict) -> dict:
@@ -29,7 +30,7 @@ def phase_4_signals_action_gate(state: dict) -> dict:
     try:
         res = call_claude(model=model_for_role("signals_action_gate"),
                           system=load_prompt("signals_action_gate"), user=ctx,
-                          json_schema=schemas.SIGNALS_ACTION_GATE, purpose="signals_action_gate")
+                          json_schema=schemas.SIGNALS_VERDICT_MERGED, purpose="signals_action_gate")
     except VisibilityContractError:
         raise
     except Exception as e:
@@ -49,5 +50,10 @@ def phase_4_signals_action_gate(state: dict) -> dict:
     state["rationale"] = res.get("rationale") or ""
     state["decision_gate"] = res.get("decision_gate") or dict(_STUB["decision_gate"])
     state["reproducible_judgment"] = res.get("reproducible_judgment") or ""
+    # Verdict-presentation fields (formerly phase 5's separate LLM call). Levels
+    # + action still come from signals.py above; these are presentation atoms only.
+    state["verdict_standalone"] = res.get("verdict_standalone", "要補證據")
+    state["light"] = res.get("light", "yellow")
+    state["readiness_score_delta"] = int(res.get("readiness_score_delta", 0))
     state["phase_4_status"], state["phase_4_complete"] = status, True
     return state

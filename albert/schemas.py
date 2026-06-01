@@ -128,6 +128,21 @@ VERDICT = {
     "required": ["verdict_standalone", "light", "readiness_score_delta"],
 }
 
+# Phase 4 + Phase 5 merged: the signals/action-gate atoms PLUS the standalone
+# verdict-presentation fields, produced in ONE structured-output call. The
+# system still computes risk LEVELS and vetoes the action from signals.py; only
+# the verdict-presentation fields below come straight from the LLM.
+SIGNALS_VERDICT_MERGED = {
+    "type": "object",
+    "properties": {
+        **SIGNALS_ACTION_GATE["properties"],
+        "verdict_standalone": {"type": "string", "enum": ["可推進", "要補證據", "方向錯", "產品定義不完整"]},
+        "light": {"type": "string", "enum": ["green", "yellow", "red"]},
+        "readiness_score_delta": {"type": "integer", "minimum": -2, "maximum": 2},
+    },
+    "required": SIGNALS_ACTION_GATE["required"] + ["verdict_standalone", "light", "readiness_score_delta"],
+}
+
 _RISK = {"type": "object", "properties": {
     "level": {"type": "string", "enum": LEVEL_ENUM}, "atoms": {"type": "object"},
     "grounded_in": {"type": "string", "enum": ["research_state", "inferred"]},

@@ -8,5 +8,11 @@ meta-question result, output:
   questions_albert_would_ask, decision_gate (can_decide_now/cannot_decide/owners), reproducible_judgment.
 - proposed_next_action: one of continue_research|branch|rerank|pull_human|push_human|synthesize|pause|
   terminal_stop, and a rationale.
-IMPORTANT: report the ATOMS and a PROPOSED action only. Do NOT output the final risk LEVELS —
-the system computes the levels from your atoms and may veto an inconsistent action. Emit StructuredOutput.
+In the SAME structured output, also deliver the standalone one-line judgment:
+- verdict_standalone: exactly one of 可推進 / 要補證據 / 方向錯 / 產品定義不完整.
+- light: green / yellow / red. An answer with unresolved dangerous ambiguities, high
+  premature_end_risk, or customer-only residual evidence cannot be green.
+- readiness_score_delta: integer in [-2, 2].
+IMPORTANT: report the ATOMS, a PROPOSED action, and the verdict-presentation fields only.
+Do NOT output the final risk LEVELS — the system computes the levels from your atoms and may
+veto an inconsistent action. Emit StructuredOutput.

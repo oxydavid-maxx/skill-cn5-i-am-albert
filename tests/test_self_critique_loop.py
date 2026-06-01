@@ -25,8 +25,9 @@ def test_loop_terminates(monkeypatch):
         cls = "addressable" if attempt < 3 else "residual"
         return {"round": attempt, "weaknesses": [{"classification": cls, "issue": "i"}], "verdict": "rework" if attempt<3 else "exhausted"}
     monkeypatch.setattr(p3, "call_claude", _fake_vote)
-    monkeypatch.setattr(p4, "call_claude", lambda **k: {"premature_end_atoms":{"open_high_impact_challenges":0,"new_info_rate":"low"},"drift_atoms":{},"recommended_next_probe":[],"missing_evidence":[],"questions_albert_would_ask":[],"proposed_next_action":"synthesize","rationale":"r","decision_gate":{"can_decide_now":[],"cannot_decide":[],"owners":[]},"reproducible_judgment":"rj"})
-    monkeypatch.setattr(p5, "call_claude", lambda **k: {"verdict_standalone":"可推進","light":"green","readiness_score_delta":1})
+    # Phase 4 now produces the verdict-presentation fields too (merged call); phase
+    # 5 reads them from state and makes NO call_claude of its own.
+    monkeypatch.setattr(p4, "call_claude", lambda **k: {"premature_end_atoms":{"open_high_impact_challenges":0,"new_info_rate":"low"},"drift_atoms":{},"recommended_next_probe":[],"missing_evidence":[],"questions_albert_would_ask":[],"proposed_next_action":"synthesize","rationale":"r","decision_gate":{"can_decide_now":[],"cannot_decide":[],"owners":[]},"reproducible_judgment":"rj","verdict_standalone":"可推進","light":"green","readiness_score_delta":1})
     monkeypatch.setattr(p5, "send_email", lambda **k: "skipped")
     g = build_graph()
     state = {"albert_input": {"current_answer": "a", "mode": "standalone", "proposal": {}, "research_state": {}}, "run_dir": tempfile.mkdtemp(), "run_id": "r", "mode": "standalone"}

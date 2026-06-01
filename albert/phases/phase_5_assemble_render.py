@@ -1,12 +1,9 @@
-"""Phase 5: compute AuditVerdict + degraded, standalone verdict+light (degraded guard),
-assemble the AuditResult-aligned contract, render + email."""
-import sys
+"""Phase 5: compute AuditVerdict + degraded, apply the degraded guard to the
+verdict+light produced by phase 4, assemble the AuditResult-aligned contract,
+render + email. NO LLM call here — the verdict fields are produced by phase 4's
+merged signals+verdict call and read from state."""
 from pathlib import Path
-from albert.errors import VisibilityContractError, DegradedEmissionError
-from albert.sdk_client import call_claude
-from albert.models import model_for_role
-from albert.utils import load_prompt
-from albert import schemas
+from albert.errors import DegradedEmissionError
 from albert.render import enforce_degraded_guard, write_challenge_json, write_report
 from albert.email_delivery import send_email
 
@@ -30,19 +27,12 @@ def phase_5_assemble_render(state: dict) -> dict:
     state["run_status"] = "failed" if degraded else "passed"
     state["verdict"] = _audit_verdict(state, degraded)
 
-    ctx = (f"Ambiguities: {state.get('top_ambiguities')}\nChallenges: {len(state.get('albert_challenges', []))}\n"
-           f"premature_end: {state.get('premature_end_risk', {}).get('level')}\n"
-           f"missing_evidence: {state.get('missing_evidence')}\n")
-    try:
-        v = call_claude(model=model_for_role("verdict_render"), system=load_prompt("verdict_render"),
-                        user=ctx, json_schema=schemas.VERDICT, purpose="verdict_render")
-        vs, light, delta = v.get("verdict_standalone", "要補證據"), v.get("light", "yellow"), int(v.get("readiness_score_delta", 0))
-    except VisibilityContractError:
-        raise
-    except Exception as e:
-        sys.stderr.write(f"[WARN] phase_5 verdict failed: {type(e).__name__}: {str(e)[:200]}; refuse\n")
-        vs, light, delta, degraded = "產品定義不完整", "red", -2, True
-        state["degraded"], state["run_status"] = True, "failed"
+    # Verdict fields are produced by phase 4's merged signals+verdict call; read
+    # from state (no LLM call here). Fall back to a refuse-grade verdict only if
+    # phase 4 somehow left them unset.
+    vs = state.get("verdict_standalone", "要補證據")
+    light = state.get("light", "yellow")
+    delta = int(state.get("readiness_score_delta", 0))
 
     try:
         enforce_degraded_guard(degraded, light)
