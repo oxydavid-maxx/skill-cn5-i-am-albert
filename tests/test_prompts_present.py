@@ -20,3 +20,7 @@ def test_auditor_adversarial():
 def test_signals_prompt_demands_atoms_and_action():
     t = load_prompt("signals_action_gate").lower()
     assert "atom" in t and "proposed_next_action" in t and "do not output the final" in t
+
+def test_challenge_prompt_demands_concise_fields():
+    t = load_prompt("challenge_generation").lower()
+    assert "1-2 sentence" in t or "one sentence" in t or "concise" in t

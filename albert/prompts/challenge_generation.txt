@@ -8,4 +8,7 @@ needs_albert_decision, needs_source_validation, blocked}, confidence, SEVERITY (
 CURRENT_ANSWER_STRENGTH (weak/medium/strong), missing_info, blocking_owner, next_action,
 meeting_ready_response, recommended_probe, generator, bone, high_impact. Also weak_points (each
 a single sentence string), missing_business_context, would_survive_leadership. Each challenge
-must be soul-grade and research-backed. Do NOT pad to a fixed count. Emit StructuredOutput.
+must be soul-grade and research-backed. Do NOT pad to a fixed count.
+Keep meeting_ready_response and recommended_probe to ONE sentence each, and evidence_refs to at
+most 2. The challenge, why_albert_would_ask, status, severity, current_answer_strength, and
+missing_info stay full — only trim the supporting prose. Emit StructuredOutput.
