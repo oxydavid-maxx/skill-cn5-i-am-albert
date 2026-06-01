@@ -1,14 +1,15 @@
-# Albert Soul Implementation Plan
+# Albert Soul Implementation Plan (v0.3)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `skill-cn5-i-am-albert` — a LangGraph FSM reviewer skill that forces decision quality on product/architecture proposals, exposing a producer-owned input/output JSON contract that the CN5 cockpit consumes.
+**Goal:** Build `skill-cn5-i-am-albert` — a LangGraph FSM **Albert Thought Agent** that audits a *current answer* inside a research loop, emitting challenges + weak points + rule-grounded stop/continue/drift signals that the CN5 cockpit consumes.
 
-**Architecture:** Six-phase LangGraph `StateGraph` with one conditional edge (Phase 3 self-critique → Phase 2 regenerate) implementing an exhaustion loop. Proven transport/visibility infra is copied from the sibling `skill-ai-escape-mrc` (package rename `ai_escape_mrc` → `albert`); Albert-specific state, schemas, prompts, phases, graph, CLI, and render are written fresh. Dual-mode: standalone (proposal text/file → markdown report + email) and cockpit (`albert_input.json` → `albert_challenge.json`).
+**Architecture:** Six-phase LangGraph `StateGraph` with one conditional edge (Phase 3 self-critique → Phase 2 regenerate) implementing an exhaustion loop. Loop signals (`premature_end_risk` / `research_drift_risk` / `recommended_next_probe`) are computed by a deterministic rule engine over named atoms (aligned to consumer PRODUCT-SPEC §9.3), never by LLM gestalt. Proven transport/visibility infra is copied from `skill-ai-escape-mrc` (package rename `ai_escape_mrc` → `albert`). Dual-mode: cockpit (`albert_input.json` → `albert_challenge.json`) and standalone (proposal → report + email; verdict+light derived).
 
 **Tech Stack:** Python 3, `langgraph`, `langgraph-checkpoint-sqlite`, `claude-agent-sdk`, `tenacity`, `pytest`. StructuredOutput via `ClaudeAgentOptions.output_format={"type":"json_schema","schema":...}`.
 
-**Reference sibling (read-only source to copy infra from):** `D:/D-claude/skills/skill-ai-escape-mrc/`
+**Spec:** `docs/superpowers/specs/2026-06-01-albert-soul-design.md` (v0.3).
+**Reference sibling (read-only, to copy infra from):** `D:/D-claude/skills/skill-ai-escape-mrc/`
 
 ---
 
@@ -16,82 +17,44 @@
 
 ```
 skill-cn5-i-am-albert/
-  SKILL.md                              # name + description + execution_mode: both
-  README.md
-  requirements.txt
-  run_albert.py                         # CLI: standalone + cockpit + --resume/--gc/--dry-run
+  SKILL.md  README.md  requirements.txt  run_albert.py
   albert/
     __init__.py
-    no_console.py        (COPY)         # Windows subprocess patch
-    errors.py            (COPY+trim)    # VisibilityContractError + Albert-specific typed errors
-    utils.py             (COPY)         # load_prompt/sluggify/safe_read_text
-    progress.py          (COPY)         # per-event JSONL + stderr
-    heartbeat.py         (COPY)         # daemon progress thread
-    stage_summary.py     (COPY+trim)    # phase start/summary/error emitters used by graph wrapper
-    models.py            (NEW)          # model_for_role: strong roles = audit/verdict
-    sdk_client.py        (COPY)         # call_claude / ClaudeSession / websearch
-    state.py             (NEW)          # AlbertState TypedDict
-    schemas.py           (NEW)          # StructuredOutput JSON schemas (per-phase + final)
-    render.py            (NEW)          # markdown report + albert_challenge.json writer
-    email_delivery.py    (NEW/COPY)     # Outlook COM send (sibling pattern)
-    graph.py             (NEW)          # StateGraph + conditional edge
+    no_console.py errors.py utils.py progress.py heartbeat.py stage_summary.py sdk_client.py  (COPY)
+    models.py state.py schemas.py signals.py render.py email_delivery.py
+    input_adapter.py            # raw proposal | cockpit json -> albert_input shape (synthesizes current_answer)
+    cockpit_contract.py         # reference mapping albert_challenge -> cockpit §6.3/§5.2 (R17 proof)
+    graph.py
     prompts/
-      intake_research.txt
-      ambiguity_hunt.txt
-      soul_interrogation.txt
-      self_critique_auditor.txt
-      gap_and_gate.txt
-      verdict_render.txt
-      albert_persona.txt                # the 12-bone soul, prepended to interrogation prompts
+      albert_persona.txt intake_grounding.txt search_reflection.txt ambiguity_hunt.txt
+      challenge_generation.txt self_critique_auditor.txt signals_and_gate.txt verdict_render.txt
     phases/
       __init__.py
-      phase_0_intake_research.py
-      phase_1_ambiguity_hunt.py
-      phase_2_soul_interrogation.py
-      phase_3_self_critique_audit.py
-      phase_4_gap_and_gate.py
-      phase_5_verdict_render.py
-  schemas/
-    albert_input.schema.json            # producer-owned input contract (cockpit adapts)
-    albert_challenge.schema.json        # producer-owned output contract (R17 seam)
-  templates/
-    albert_report_template.md
+      phase_0_intake_grounding.py phase_1_ambiguity_hunt.py phase_2_challenge_generation.py
+      phase_3_self_critique_audit.py phase_4_signals_and_gate.py phase_5_assemble_render.py
+  schemas/ albert_input.schema.json albert_challenge.schema.json
+  templates/ albert_report_template.md
+  docs/ albert-cockpit-mapping.md  albert-reviews/
   tests/
-    test_graph_topology.py
-    test_self_critique_loop.py
-    test_degraded_guard.py
-    test_albert_input_schema.py
-    test_albert_challenge_schema.py
-    test_phase_0_intake.py
-    test_phase_1_ambiguity.py
-    test_phase_2_soul.py
-    test_phase_3_audit.py
-    test_phase_4_gate.py
-    test_phase_5_verdict.py
-    test_input_adapter.py               # standalone-text → albert_input shape
-    test_email_delivery.py
-  docs/
-    superpowers/specs/2026-06-01-albert-soul-design.md   (exists)
-    superpowers/plans/2026-06-01-albert-soul.md          (this file)
-    albert-reviews/                     # standalone report output dir
+    test_models_routing.py test_state_shape.py
+    test_albert_input_schema.py test_albert_challenge_schema.py
+    test_signals_grounding.py            # L4 rule engine
+    test_prompts_present.py
+    test_input_adapter.py test_phase_0_intake.py test_phase_1_ambiguity.py
+    test_phase_2_challenge.py test_phase_3_audit.py test_phase_4_signals.py test_phase_5_assemble.py
+    test_render_degraded_guard.py test_cockpit_contract.py test_email_delivery.py
+    test_graph_topology.py test_self_critique_loop.py
 ```
 
-**Conventions used in every phase:**
-- A phase is `def phase_x(state: dict) -> dict:` returning the mutated `state` dict. The graph wrapper (`_wrap_with_progress`) merges the return into state and emits visibility receipts.
-- LLM calls go through `call_claude(model=model_for_role(<role>), system=load_prompt(<name>), user=<ctx>, json_schema=schemas.<SCHEMA>, purpose=<role>)`.
-- `load_prompt("x")` reads `albert/prompts/x.txt` (trailing whitespace stripped).
-- Every phase that calls the LLM has a deterministic stub fallback and sets `phase_x_status` = `"passed"` (clean) / `"failed"` (fell back), mirroring the sibling degraded-emission guard.
+**Phase convention:** a phase is `def phase_x(state: dict) -> dict:` returning the mutated `state`. LLM calls go through `call_claude(model=model_for_role(role), system=load_prompt(name), user=ctx, json_schema=schemas.X, purpose=role)`; multi-round adversarial calls use `ClaudeSession`. Every LLM phase has a deterministic stub fallback and sets `phase_x_status` ∈ `passed`/`failed`.
 
 ---
 
-## Task 1: Scaffold package + copy proven infra
+## Task 1: Scaffold + copy infra
 
-**Files:**
-- Create: `albert/__init__.py` (empty), `albert/phases/__init__.py` (empty)
-- Create: `requirements.txt`
-- Copy from sibling (then rename imports): `albert/no_console.py`, `albert/errors.py`, `albert/utils.py`, `albert/progress.py`, `albert/heartbeat.py`, `albert/stage_summary.py`, `albert/sdk_client.py`
+**Files:** `albert/__init__.py`, `albert/phases/__init__.py`, `requirements.txt`; copy `no_console.py errors.py utils.py progress.py heartbeat.py stage_summary.py sdk_client.py`.
 
-- [ ] **Step 1: Create `requirements.txt`**
+- [ ] **Step 1: `requirements.txt`**
 
 ```
 langgraph>=0.2
@@ -99,15 +62,12 @@ langgraph-checkpoint-sqlite>=2.0
 claude-agent-sdk>=0.1
 tenacity>=8
 pytest>=8
+jsonschema>=4
 ```
 
-- [ ] **Step 2: Create empty package markers**
+- [ ] **Step 2: Empty package markers** — create `albert/__init__.py` and `albert/phases/__init__.py`.
 
-Create `albert/__init__.py` and `albert/phases/__init__.py` as empty files.
-
-- [ ] **Step 3: Copy infra files and rename package**
-
-Copy each file from `D:/D-claude/skills/skill-ai-escape-mrc/ai_escape_mrc/` to `albert/`, replacing every `ai_escape_mrc` token with `albert` and every `AI Escape MRC` label with `Albert`:
+- [ ] **Step 3: Copy infra and rename package**
 
 ```bash
 for f in no_console.py errors.py utils.py progress.py heartbeat.py stage_summary.py sdk_client.py; do
@@ -116,153 +76,113 @@ for f in no_console.py errors.py utils.py progress.py heartbeat.py stage_summary
 done
 ```
 
-- [ ] **Step 4: Trim `albert/errors.py` to Albert's needs**
-
-Keep `VisibilityContractError`. Replace the Phase9* / OutputIdentityContractError classes with one Albert-specific error:
+- [ ] **Step 4: Add `DegradedEmissionError` to `albert/errors.py`** (keep `VisibilityContractError`; replace the Phase9*/OutputIdentity classes):
 
 ```python
 class DegradedEmissionError(Exception):
-    """A run that fell back (status=='failed') tried to emit a non-refusal verdict.
-
-    Raised by phase_5 when a green/yellow light would be emitted on top of a
-    degraded run. Per R13: refuse rather than ship a self-exonerating warning.
-    """
+    """A degraded run (status=='failed') tried to emit a non-refusal verdict/green light."""
     def __init__(self, message: str, predicate: str = "") -> None:
         super().__init__(message)
         self.predicate = predicate
 ```
 
-- [ ] **Step 5: Verify infra imports cleanly**
+- [ ] **Step 5: Verify imports**
 
 Run: `py -3 -c "import albert.sdk_client, albert.progress, albert.heartbeat, albert.utils, albert.errors, albert.stage_summary, albert.no_console"`
-Expected: no output, exit 0. (If `stage_summary` references symbols that were trimmed from `errors`, fix the import line in `stage_summary.py` to match.)
+Expected: exit 0. (If `stage_summary` imports a trimmed symbol from `errors`, fix that import line.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add albert/ requirements.txt
-git commit -m "feat: scaffold albert package + copy proven transport/visibility infra"
+git commit -m "feat: scaffold albert package + copy proven infra"
 ```
 
 ---
 
-## Task 2: `albert/models.py` — model routing
+## Task 2: `albert/models.py`
 
-**Files:**
-- Create: `albert/models.py`
-- Test: `tests/test_models_routing.py`
+**Files:** Create `albert/models.py`; Test `tests/test_models_routing.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Failing test**
 
 ```python
 # tests/test_models_routing.py
-import os
 from albert.models import model_for_role, model_label
 
-def test_strong_roles_use_session_default():
+def test_strong_roles_use_default():
+    assert model_for_role("challenge_generation") is None
     assert model_for_role("self_critique_audit") is None
     assert model_for_role("verdict_render") is None
 
-def test_non_strong_role_default_is_none(monkeypatch):
-    monkeypatch.delenv("ALBERT_FAST_MODEL", raising=False)
-    assert model_for_role("ambiguity_hunt") is None
-
-def test_fast_model_env_routes_non_strong(monkeypatch):
+def test_fast_env_routes_non_strong(monkeypatch):
     monkeypatch.setenv("ALBERT_FAST_MODEL", "claude-sonnet-4-6")
     assert model_for_role("ambiguity_hunt") == "claude-sonnet-4-6"
-    assert model_for_role("self_critique_audit") is None  # strong role ignores fast override
+    assert model_for_role("challenge_generation") is None
 
-def test_model_label():
+def test_label():
     assert model_label(None) == "environment-default"
-    assert model_label("claude-opus-4-8") == "claude-opus-4-8"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run → FAIL** (`No module named 'albert.models'`): `py -3 -m pytest tests/test_models_routing.py -v`
 
-Run: `py -3 -m pytest tests/test_models_routing.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'albert.models'`
-
-- [ ] **Step 3: Write `albert/models.py`**
+- [ ] **Step 3: Implement**
 
 ```python
-"""Model routing for Albert SDK calls.
-
-Default: do not set ClaudeAgentOptions.model so the SDK uses the user's active
-session model. The reasoning-heavy roles (self-critique audit, verdict) stay on
-the strong session default even when a fast model is opted in for the rest.
-"""
+"""Model routing. Reasoning-heavy roles stay on the strong session default."""
 from __future__ import annotations
 import os
 
 ENVIRONMENT_DEFAULT_MODEL_LABEL = "environment-default"
-
-_STRONG_ROLES = frozenset({
-    "soul_interrogation",
-    "self_critique_audit",
-    "verdict_render",
-})
+_STRONG_ROLES = frozenset({"challenge_generation", "self_critique_audit", "verdict_render"})
 _FAST_MODEL_ENV = "ALBERT_FAST_MODEL"
 
 
 def model_for_role(role: str) -> str | None:
     if role in _STRONG_ROLES:
         return None
-    fast = (os.environ.get(_FAST_MODEL_ENV) or "").strip()
-    return fast or None
+    return (os.environ.get(_FAST_MODEL_ENV) or "").strip() or None
 
 
 def model_label(model: str | None) -> str:
     return model or ENVIRONMENT_DEFAULT_MODEL_LABEL
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `py -3 -m pytest tests/test_models_routing.py -v`
-Expected: PASS (4 passed)
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add albert/models.py tests/test_models_routing.py
-git commit -m "feat: model_for_role with strong reasoning roles"
-```
+- [ ] **Step 4: Run → PASS**. **Step 5: Commit** `feat: model routing`.
 
 ---
 
-## Task 3: `albert/state.py` — FSM state
+## Task 3: `albert/state.py`
 
-**Files:**
-- Create: `albert/state.py`
-- Test: `tests/test_state_shape.py`
+**Files:** Create `albert/state.py`; Test `tests/test_state_shape.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Failing test**
 
 ```python
 # tests/test_state_shape.py
-from albert.state import AlbertState, GENERATORS
+from albert.state import AlbertState, GENERATORS, CHALLENGE_STATUSES
 
-def test_generators_are_six():
-    assert GENERATORS == [
-        "winning", "first_principle", "timing",
-        "competitor", "owner_business", "convergence_redteam",
-    ]
+def test_generators():
+    assert GENERATORS == ["winning", "first_principle", "timing",
+                          "competitor", "owner_business", "convergence_redteam"]
 
-def test_state_is_typeddict_total_false():
-    # total=False => instantiable empty without KeyError at type level
+def test_statuses_are_eight():
+    assert len(CHALLENGE_STATUSES) == 8
+    assert "needs_albert_decision" in CHALLENGE_STATUSES
+    assert "needs_bu_judgment" in CHALLENGE_STATUSES
+
+def test_state_total_false():
     s: AlbertState = {}
-    s["proposal"] = {"title": "t", "body": "b", "domain": "d"}
-    assert s["proposal"]["title"] == "t"
+    s["current_answer"] = "x"
+    assert s["current_answer"] == "x"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run → FAIL**: `py -3 -m pytest tests/test_state_shape.py -v`
 
-Run: `py -3 -m pytest tests/test_state_shape.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'albert.state'`
-
-- [ ] **Step 3: Write `albert/state.py`**
+- [ ] **Step 3: Implement**
 
 ```python
-"""AlbertState: LangGraph state schema for the Albert reviewer FSM."""
+"""AlbertState: LangGraph state for the Albert Thought Agent FSM."""
 import operator
 from typing import Annotated, TypedDict, Literal, Optional
 
@@ -271,149 +191,122 @@ def _take_last(_a, b):
     return b
 
 
-GENERATORS = [
-    "winning", "first_principle", "timing",
-    "competitor", "owner_business", "convergence_redteam",
+GENERATORS = ["winning", "first_principle", "timing",
+              "competitor", "owner_business", "convergence_redteam"]
+
+CHALLENGE_STATUSES = [
+    "answered", "partially_answered", "needs_external_research", "needs_internal_data",
+    "needs_bu_judgment", "needs_albert_decision", "needs_source_validation", "blocked",
 ]
 
 
 class AlbertState(TypedDict, total=False):
-    # Input
-    proposal: dict            # {title, body, domain}
-    albert_input: dict        # full parsed input contract (cockpit) or synthesized (standalone)
-    mode: Literal["standalone", "cockpit"]
+    # Input (the albert_input contract, normalized)
+    albert_input: dict
+    mode: Literal["cockpit", "standalone"]
+    current_answer: str
+    original_objective: str
+    issue_map: list[dict]
+    challenge_map: list[dict]
+    evidence: list[dict]
+    research_state: dict
+    proposal: dict
     run_id: str
     run_dir: str
     user_email: Optional[str]
-    operator_email: Optional[str]
 
-    # Visibility accumulators (written by every node's progress wrapper)
+    # Visibility accumulators (progress wrapper)
     screen_summary: Annotated[Optional[str], _take_last]
     stage_summaries: Annotated[list[dict], operator.add]
     stage_summaries_path: Annotated[Optional[str], _take_last]
     visibility_receipt: Annotated[dict, _take_last]
 
-    # Phase 0: intake + research
+    # Phase 0
     phase_0_complete: bool
     phase_0_status: Optional[Literal["passed", "failed"]]
-    research: list[dict]          # websearch results grounding the interrogation
+    research: list[dict]
+    meta_question: dict        # {reframing, higher_level_question, wave2_queries}
 
-    # Phase 1: ambiguity hunt
+    # Phase 1
     phase_1_complete: bool
     phase_1_status: Optional[Literal["passed", "failed"]]
-    top_ambiguities: list[dict]   # exactly 3 {term, why_dangerous, precise_question}
+    top_ambiguities: list[dict]
 
-    # Phase 2: soul interrogation
+    # Phase 2
     phase_2_complete: bool
     phase_2_status: Optional[Literal["passed", "failed"]]
-    soul_questions: list[dict]    # variable length {q, generator, bone, grounding}
+    albert_challenges: list[dict]
+    weak_points: list[dict]
+    missing_business_context: list[str]
+    would_survive_leadership: Optional[bool]
 
-    # Phase 3: self-critique audit (exhaustion loop with phase 2)
+    # Phase 3 (exhaustion loop with phase 2)
     phase_3_complete: bool
     phase_3_status: Optional[Literal["passed", "failed"]]
     phase_3_rounds: list[dict]
     phase_3_verdict: Optional[Literal["EXHAUSTED", "REWORK"]]
     phase_3_attempt_count: int
 
-    # Phase 4: evidence gap + decision gate
+    # Phase 4
     phase_4_complete: bool
     phase_4_status: Optional[Literal["passed", "failed"]]
-    evidence_gaps: list[dict]     # {item, who_can_answer, needed_before}
-    decision_gate: dict           # {can_decide_now, cannot_decide, owners}
+    missing_evidence: list[dict]
+    premature_end_risk: dict
+    research_drift_risk: dict
+    recommended_next_probe: list[dict]
+    decision_gate: dict
     reproducible_judgment: str
 
-    # Phase 5: verdict + render + emit
+    # Phase 5
     phase_5_complete: bool
-    verdict: Optional[str]        # 可推進 / 要補證據 / 方向錯 / 產品定義不完整
+    verdict: Optional[str]
     light: Optional[Literal["green", "yellow", "red"]]
-    readiness_delta: int
+    readiness_score_delta: int
     run_status: Optional[Literal["passed", "failed"]]
     report_path: Optional[str]
     challenge_json_path: Optional[str]
     email_delivery_result: Optional[str]
     email_delivery_error: Optional[str]
 
-    # Metadata
     start_time: str
     end_time: Optional[str]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `py -3 -m pytest tests/test_state_shape.py -v`
-Expected: PASS (2 passed)
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add albert/state.py tests/test_state_shape.py
-git commit -m "feat: AlbertState FSM state schema"
-```
+- [ ] **Step 4: Run → PASS**. **Step 5: Commit** `feat: AlbertState v0.3`.
 
 ---
 
-## Task 4: `albert/schemas.py` + JSON contract files
+## Task 4: `albert/schemas.py` + disk contract files
 
-**Files:**
-- Create: `albert/schemas.py`
-- Create: `schemas/albert_input.schema.json`, `schemas/albert_challenge.schema.json`
-- Test: `tests/test_albert_challenge_schema.py`, `tests/test_albert_input_schema.py`
+**Files:** Create `albert/schemas.py`, `schemas/albert_input.schema.json`, `schemas/albert_challenge.schema.json`; Test `tests/test_albert_input_schema.py`, `tests/test_albert_challenge_schema.py`.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Failing tests**
 
 ```python
 # tests/test_albert_challenge_schema.py
-import json, jsonschema  # jsonschema ships transitively; if absent, validate structurally
+import json, jsonschema
 from pathlib import Path
 from albert import schemas
-
 ROOT = Path(__file__).parent.parent
 
-def _valid_challenge():
-    return {
-        "top_ambiguities": [
-            {"term": "no spec", "why_dangerous": "hides which spec is missing",
-             "precise_question": "high-level / impl / customer / winning spec?"}
-        ] * 3,
-        "soul_questions": [
-            {"q": "why do we win?", "generator": "winning", "bone": 2, "grounding": "internal"}
-        ],
-        "evidence_gaps": [
-            {"item": "competitor roadmap", "who_can_answer": "public", "needed_before": "feasibility"}
-        ],
-        "decision_gate": {"can_decide_now": ["scope"], "cannot_decide": ["price"],
-                          "owners": [{"area": "latency", "owner": "TBD"}]},
-        "verdict": "要補證據",
-        "light": "yellow",
-        "readiness_delta": -1,
-        "reproducible_judgment": "checklist X",
-        "run_status": "passed",
-    }
-
-def test_final_schema_required_keys_present():
+def test_required_keys():
     props = schemas.ALBERT_CHALLENGE["properties"]
-    for key in ("top_ambiguities", "soul_questions", "evidence_gaps",
-                "decision_gate", "verdict", "light", "readiness_delta",
-                "reproducible_judgment", "run_status"):
-        assert key in props
+    for k in ("top_ambiguities","albert_challenges","weak_points","missing_business_context",
+              "missing_evidence","premature_end_risk","research_drift_risk",
+              "recommended_next_probe","readiness_score_delta","run_status"):
+        assert k in props
 
-def test_verdict_and_light_are_enums():
+def test_challenge_status_enum_has_eight():
+    entry = schemas.ALBERT_CHALLENGE["properties"]["albert_challenges"]["items"]["properties"]
+    assert len(entry["status"]["enum"]) == 8
+
+def test_verdict_enum():
     assert schemas.ALBERT_CHALLENGE["properties"]["verdict"]["enum"] == \
-        ["可推進", "要補證據", "方向錯", "產品定義不完整"]
-    assert schemas.ALBERT_CHALLENGE["properties"]["light"]["enum"] == \
-        ["green", "yellow", "red"]
+        ["可推進","要補證據","方向錯","產品定義不完整"]
 
-def test_top_ambiguities_exactly_three():
-    amb = schemas.ALBERT_CHALLENGE["properties"]["top_ambiguities"]
-    assert amb["minItems"] == 3 and amb["maxItems"] == 3
-
-def test_disk_schema_matches_module():
-    disk = json.loads((ROOT / "schemas" / "albert_challenge.schema.json").read_text(encoding="utf-8"))
-    assert disk["properties"]["verdict"]["enum"] == \
-        schemas.ALBERT_CHALLENGE["properties"]["verdict"]["enum"]
-
-def test_sample_challenge_conforms():
-    jsonschema.validate(_valid_challenge(), schemas.ALBERT_CHALLENGE)
+def test_disk_matches_module():
+    disk = json.loads((ROOT/"schemas"/"albert_challenge.schema.json").read_text(encoding="utf-8"))
+    assert disk["properties"]["verdict"]["enum"] == schemas.ALBERT_CHALLENGE["properties"]["verdict"]["enum"]
 ```
 
 ```python
@@ -423,131 +316,135 @@ from pathlib import Path
 from albert import schemas
 ROOT = Path(__file__).parent.parent
 
-def test_input_schema_has_proposal_and_mode():
-    props = schemas.ALBERT_INPUT["properties"]
-    assert "proposal" in props and "mode" in props
-    assert props["mode"]["enum"] == ["standalone", "cockpit"]
+def test_input_requires_current_answer_and_mode():
+    assert set(schemas.ALBERT_INPUT["required"]) >= {"current_answer", "mode"}
+    assert schemas.ALBERT_INPUT["properties"]["mode"]["enum"] == ["cockpit", "standalone"]
 
-def test_disk_input_schema_matches_module():
-    disk = json.loads((ROOT / "schemas" / "albert_input.schema.json").read_text(encoding="utf-8"))
+def test_input_has_research_state():
+    assert "research_state" in schemas.ALBERT_INPUT["properties"]
+
+def test_disk_input_matches(tmp_path):
+    disk = json.loads((ROOT/"schemas"/"albert_input.schema.json").read_text(encoding="utf-8"))
     assert set(disk["properties"]) == set(schemas.ALBERT_INPUT["properties"])
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run → FAIL**: `py -3 -m pytest tests/test_albert_challenge_schema.py tests/test_albert_input_schema.py -v`
 
-Run: `py -3 -m pytest tests/test_albert_challenge_schema.py tests/test_albert_input_schema.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'albert.schemas'`
-
-- [ ] **Step 3: Write `albert/schemas.py`**
+- [ ] **Step 3: Implement `albert/schemas.py`**
 
 ```python
-"""StructuredOutput JSON schemas for Albert phases.
-
-Passed to call_claude(json_schema=...) → SDK constrained decoding. Top-level
-type is always 'object' (Anthropic requirement).
-"""
+"""StructuredOutput JSON schemas. Top-level type always 'object'."""
 
 GENERATOR_ENUM = ["winning", "first_principle", "timing",
                   "competitor", "owner_business", "convergence_redteam"]
+STATUS_ENUM = ["answered", "partially_answered", "needs_external_research", "needs_internal_data",
+               "needs_bu_judgment", "needs_albert_decision", "needs_source_validation", "blocked"]
+LEVEL_ENUM = ["low", "medium", "high"]
+
+SEARCH_REFLECTION = {
+    "type": "object",
+    "properties": {
+        "reframing": {"type": "string"},
+        "higher_level_question": {"type": "string"},
+        "wave2_queries": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 4},
+    },
+    "required": ["higher_level_question", "wave2_queries"],
+}
 
 AMBIGUITY_HUNT = {
     "type": "object",
     "properties": {
-        "all_vague_terms": {"type": "array", "items": {"type": "string"}},
         "top_ambiguities": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "term": {"type": "string"},
-                    "why_dangerous": {"type": "string"},
-                    "precise_question": {"type": "string"},
-                },
-                "required": ["term", "why_dangerous", "precise_question"],
-            },
-            "minItems": 3, "maxItems": 3,
-        },
+            "items": {"type": "object", "properties": {
+                "term": {"type": "string"}, "why_dangerous": {"type": "string"},
+                "precise_question": {"type": "string"}},
+                "required": ["term", "why_dangerous", "precise_question"]},
+            "minItems": 3, "maxItems": 3},
     },
     "required": ["top_ambiguities"],
 }
 
-SOUL_INTERROGATION = {
+_CHALLENGE_ITEM = {
     "type": "object",
     "properties": {
-        "soul_questions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "q": {"type": "string"},
-                    "generator": {"type": "string", "enum": GENERATOR_ENUM},
-                    "bone": {"type": "integer", "minimum": 1, "maximum": 12},
-                    "grounding": {"type": "string"},
-                },
-                "required": ["q", "generator", "bone"],
-            },
-            "minItems": 1,
-        },
+        "challenge": {"type": "string"},
+        "why_albert_would_ask": {"type": "string"},
+        "current_answer": {"type": "string"},
+        "status": {"type": "string", "enum": STATUS_ENUM},
+        "confidence": {"type": "string", "enum": LEVEL_ENUM},
+        "missing_info": {"type": "string"},
+        "blocking_owner": {"type": "string"},
+        "next_action": {"type": "string"},
+        "meeting_ready_response": {"type": "string"},
+        "generator": {"type": "string", "enum": GENERATOR_ENUM},
+        "bone": {"type": "integer", "minimum": 1, "maximum": 12},
+        "high_impact": {"type": "boolean"},
     },
-    "required": ["soul_questions"],
+    "required": ["challenge", "why_albert_would_ask", "status", "generator", "bone"],
+}
+
+CHALLENGE_GENERATION = {
+    "type": "object",
+    "properties": {
+        "albert_challenges": {"type": "array", "items": _CHALLENGE_ITEM, "minItems": 1},
+        "weak_points": {"type": "array", "items": {"type": "object", "properties": {
+            "point": {"type": "string"}, "why_it_fails_in_a_meeting": {"type": "string"}},
+            "required": ["point"]}},
+        "missing_business_context": {"type": "array", "items": {"type": "string"}},
+        "would_survive_leadership": {"type": "boolean"},
+    },
+    "required": ["albert_challenges", "weak_points", "would_survive_leadership"],
 }
 
 SELF_CRITIQUE_AUDIT = {
     "type": "object",
     "properties": {
         "round": {"type": "integer"},
-        "weaknesses": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "question_index": {"type": ["integer", "null"]},
-                    "classification": {"type": "string", "enum": ["ADDRESSABLE", "RESIDUAL"]},
-                    "issue": {"type": "string"},
-                    "suggested_sharpening": {"type": "string"},
-                },
-                "required": ["classification", "issue"],
-            },
-        },
+        "weaknesses": {"type": "array", "items": {"type": "object", "properties": {
+            "challenge_index": {"type": ["integer", "null"]},
+            "classification": {"type": "string", "enum": ["ADDRESSABLE", "RESIDUAL"]},
+            "issue": {"type": "string"}, "suggested_sharpening": {"type": "string"}},
+            "required": ["classification", "issue"]}},
         "verdict": {"type": "string", "enum": ["CONTINUE", "EXHAUSTED", "REWORK"]},
     },
     "required": ["round", "weaknesses", "verdict"],
 }
 
-GAP_AND_GATE = {
+# Phase 4 LLM produces the ATOMS + the fuzzy judgments; signals.py computes the level.
+SIGNALS_AND_GATE = {
     "type": "object",
     "properties": {
-        "evidence_gaps": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "item": {"type": "string"},
-                    "who_can_answer": {"type": "string", "enum": ["AI", "public", "internal", "customer"]},
-                    "needed_before": {"type": "string"},
-                },
-                "required": ["item", "who_can_answer"],
-            },
-        },
-        "decision_gate": {
-            "type": "object",
-            "properties": {
-                "can_decide_now": {"type": "array", "items": {"type": "string"}},
-                "cannot_decide": {"type": "array", "items": {"type": "string"}},
-                "owners": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {"area": {"type": "string"}, "owner": {"type": "string"}},
-                        "required": ["area", "owner"],
-                    },
-                },
-            },
-            "required": ["can_decide_now", "cannot_decide", "owners"],
-        },
+        "missing_evidence": {"type": "array", "items": {"type": "object", "properties": {
+            "item": {"type": "string"},
+            "who_can_answer": {"type": "string", "enum": ["AI", "public", "internal", "customer"]}},
+            "required": ["item", "who_can_answer"]}},
+        "premature_end_atoms": {"type": "object", "properties": {
+            "open_high_impact_challenges": {"type": "integer", "minimum": 0},
+            "new_info_rate": {"type": "string", "enum": ["high", "medium", "low", "none", "unknown"]},
+            "challenge_map_mostly_classified": {"type": "boolean"},
+            "unresolved_are_human_data_decision_only": {"type": "boolean"},
+            "meta_question_search_found_new_high_impact_angle": {"type": "boolean"}},
+            "required": ["open_high_impact_challenges", "new_info_rate"]},
+        "drift_atoms": {"type": "object", "properties": {
+            "current_focus_in_original_high_value_set": {"type": "boolean"},
+            "high_value_branch_ignored": {"type": "boolean"}}},
+        "recommended_next_probe": {"type": "array", "items": {"type": "object", "properties": {
+            "probe": {"type": "string"}, "why": {"type": "string"},
+            "kind": {"type": "string", "enum": ["meta", "object"]},
+            "impact": {"type": "string", "enum": LEVEL_ENUM},
+            "answerability": {"type": "string", "enum": LEVEL_ENUM}},
+            "required": ["probe", "why"]}},
+        "decision_gate": {"type": "object", "properties": {
+            "can_decide_now": {"type": "array", "items": {"type": "string"}},
+            "cannot_decide": {"type": "array", "items": {"type": "string"}},
+            "owners": {"type": "array", "items": {"type": "object", "properties": {
+                "area": {"type": "string"}, "owner": {"type": "string"}},
+                "required": ["area", "owner"]}}},
+            "required": ["can_decide_now", "cannot_decide", "owners"]},
         "reproducible_judgment": {"type": "string"},
     },
-    "required": ["evidence_gaps", "decision_gate"],
+    "required": ["premature_end_atoms", "decision_gate"],
 }
 
 VERDICT = {
@@ -555,53 +452,61 @@ VERDICT = {
     "properties": {
         "verdict": {"type": "string", "enum": ["可推進", "要補證據", "方向錯", "產品定義不完整"]},
         "light": {"type": "string", "enum": ["green", "yellow", "red"]},
-        "readiness_delta": {"type": "integer", "minimum": -2, "maximum": 2},
-        "one_line": {"type": "string"},
+        "readiness_score_delta": {"type": "integer", "minimum": -2, "maximum": 2},
     },
-    "required": ["verdict", "light", "readiness_delta"],
+    "required": ["verdict", "light", "readiness_score_delta"],
 }
 
-# Final assembled contract (validated on disk + emitted to cockpit).
+_RISK = {"type": "object", "properties": {
+    "level": {"type": "string", "enum": LEVEL_ENUM},
+    "atoms": {"type": "object"},
+    "grounded_in": {"type": "string", "enum": ["research_state", "inferred"]},
+    "why": {"type": "string"},
+    "low_confidence": {"type": "boolean"}}, "required": ["level", "grounded_in"]}
+
 ALBERT_CHALLENGE = {
     "type": "object",
     "properties": {
+        "audited_answer": {"type": "string"},
+        "would_survive_leadership": {"type": "boolean"},
         "top_ambiguities": AMBIGUITY_HUNT["properties"]["top_ambiguities"],
-        "soul_questions": SOUL_INTERROGATION["properties"]["soul_questions"],
-        "evidence_gaps": GAP_AND_GATE["properties"]["evidence_gaps"],
-        "decision_gate": GAP_AND_GATE["properties"]["decision_gate"],
-        "verdict": VERDICT["properties"]["verdict"],
-        "light": VERDICT["properties"]["light"],
-        "readiness_delta": VERDICT["properties"]["readiness_delta"],
+        "albert_challenges": {"type": "array", "items": _CHALLENGE_ITEM},
+        "weak_points": CHALLENGE_GENERATION["properties"]["weak_points"],
+        "missing_business_context": {"type": "array", "items": {"type": "string"}},
+        "missing_evidence": SIGNALS_AND_GATE["properties"]["missing_evidence"],
+        "premature_end_risk": _RISK,
+        "research_drift_risk": _RISK,
+        "recommended_next_probe": SIGNALS_AND_GATE["properties"]["recommended_next_probe"],
+        "decision_gate": SIGNALS_AND_GATE["properties"]["decision_gate"],
+        "readiness_score_delta": {"type": "integer", "minimum": -2, "maximum": 2},
         "reproducible_judgment": {"type": "string"},
         "run_status": {"type": "string", "enum": ["passed", "failed"]},
+        "verdict": {"type": "string", "enum": ["可推進", "要補證據", "方向錯", "產品定義不完整"]},
+        "light": {"type": "string", "enum": ["green", "yellow", "red"]},
     },
-    "required": ["top_ambiguities", "soul_questions", "evidence_gaps",
-                 "decision_gate", "verdict", "light", "readiness_delta", "run_status"],
+    "required": ["top_ambiguities", "albert_challenges", "weak_points", "missing_business_context",
+                 "missing_evidence", "premature_end_risk", "research_drift_risk",
+                 "recommended_next_probe", "readiness_score_delta", "run_status"],
 }
 
 ALBERT_INPUT = {
     "type": "object",
     "properties": {
-        "proposal": {
-            "type": "object",
-            "properties": {"title": {"type": "string"}, "body": {"type": "string"},
-                           "domain": {"type": "string"}},
-            "required": ["body"],
-        },
+        "mode": {"type": "string", "enum": ["cockpit", "standalone"]},
+        "current_answer": {"type": "string"},
+        "original_objective": {"type": "string"},
         "issue_map": {"type": "array", "items": {"type": "object"}},
         "challenge_map": {"type": "array", "items": {"type": "object"}},
         "evidence": {"type": "array", "items": {"type": "object"}},
-        "draft_answer": {"type": "string"},
-        "readiness": {"type": "integer"},
-        "mode": {"type": "string", "enum": ["standalone", "cockpit"]},
+        "research_state": {"type": "object"},
+        "proposal": {"type": "object", "properties": {
+            "title": {"type": "string"}, "body": {"type": "string"}, "domain": {"type": "string"}}},
     },
-    "required": ["proposal", "mode"],
+    "required": ["current_answer", "mode"],
 }
 ```
 
-- [ ] **Step 4: Write the two disk schema files**
-
-`schemas/albert_challenge.schema.json` and `schemas/albert_input.schema.json` are the JSON dumps of `ALBERT_CHALLENGE` and `ALBERT_INPUT` with a `$schema` + `title` header. Generate them deterministically from the module so they never drift:
+- [ ] **Step 4: Generate disk schema files**
 
 ```bash
 py -3 -c "import json; from albert import schemas; \
@@ -609,221 +514,339 @@ open('schemas/albert_challenge.schema.json','w',encoding='utf-8').write(json.dum
 open('schemas/albert_input.schema.json','w',encoding='utf-8').write(json.dumps({'\$schema':'https://json-schema.org/draft/2020-12/schema','title':'AlbertInput', **schemas.ALBERT_INPUT}, ensure_ascii=False, indent=2))"
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 5: Run → PASS**: `py -3 -m pytest tests/test_albert_challenge_schema.py tests/test_albert_input_schema.py -v`
 
-Run: `py -3 -m pytest tests/test_albert_challenge_schema.py tests/test_albert_input_schema.py -v`
-Expected: PASS. (If `jsonschema` is not importable, replace the `jsonschema.validate` call in `test_sample_challenge_conforms` with a structural assertion on required keys.)
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add albert/schemas.py schemas/ tests/test_albert_challenge_schema.py tests/test_albert_input_schema.py
-git commit -m "feat: Albert StructuredOutput schemas + producer-owned contract files"
-```
+- [ ] **Step 6: Commit** `feat: v0.3 StructuredOutput schemas + producer-owned contract files`.
 
 ---
 
-## Task 5: Prompts — the 12-bone soul + per-phase system prompts
+## Task 5: `albert/signals.py` — the rule engine (L4 heart)
 
-**Files:**
-- Create: `albert/prompts/albert_persona.txt`, `intake_research.txt`, `ambiguity_hunt.txt`, `soul_interrogation.txt`, `self_critique_auditor.txt`, `gap_and_gate.txt`, `verdict_render.txt`
-- Test: `tests/test_prompts_present.py`
+**Files:** Create `albert/signals.py`; Test `tests/test_signals_grounding.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Failing test**
+
+```python
+# tests/test_signals_grounding.py
+from albert.signals import premature_end_level, drift_level, rank_next_probe, grounding_of
+
+_STOP_OK = {"open_high_impact_challenges": 0, "new_info_rate": "low",
+            "challenge_map_mostly_classified": True,
+            "unresolved_are_human_data_decision_only": True,
+            "meta_question_search_found_new_high_impact_angle": False}
+
+def test_all_stop_conditions_met_is_low():
+    assert premature_end_level(_STOP_OK) == "low"
+
+def test_open_high_impact_forces_not_low():
+    atoms = dict(_STOP_OK, open_high_impact_challenges=2)
+    assert premature_end_level(atoms) in ("medium", "high")
+
+def test_two_violations_is_high():
+    atoms = dict(_STOP_OK, open_high_impact_challenges=2, new_info_rate="high")
+    assert premature_end_level(atoms) == "high"
+
+def test_meta_question_found_blocks_low():
+    atoms = dict(_STOP_OK, meta_question_search_found_new_high_impact_angle=True)
+    assert premature_end_level(atoms) != "low"
+
+def test_drift_low_when_focus_in_set():
+    assert drift_level({"current_focus_in_original_high_value_set": True,
+                        "high_value_branch_ignored": False}) == "low"
+
+def test_drift_high_when_ignoring_high_value():
+    assert drift_level({"current_focus_in_original_high_value_set": False,
+                        "high_value_branch_ignored": True}) == "high"
+
+def test_grounding_inferred_when_no_research_state():
+    assert grounding_of({}) == "inferred"
+    assert grounding_of({"branches_explored": ["a"]}) == "research_state"
+
+def test_rank_orders_by_impact_then_answerability():
+    probes = [{"probe": "a", "impact": "low", "answerability": "high"},
+              {"probe": "b", "impact": "high", "answerability": "low"}]
+    ranked = rank_next_probe(probes)
+    assert ranked[0]["probe"] == "b"           # high impact wins
+    assert ranked[0]["priority"] == 1
+```
+
+- [ ] **Step 2: Run → FAIL**: `py -3 -m pytest tests/test_signals_grounding.py -v`
+
+- [ ] **Step 3: Implement `albert/signals.py`**
+
+```python
+"""Deterministic rule engine for the loop signals (spec §4 / consumer §9.3).
+
+The level of each risk signal is a pure function of named atoms — never an LLM
+gestalt. The LLM (phase 4) supplies the atoms; this module computes the level so
+it is auditable and cannot be silently downgraded.
+"""
+from __future__ import annotations
+
+_RANK = {"high": 3, "medium": 2, "low": 1, "none": 0, "unknown": 1}
+
+
+def grounding_of(research_state: dict | None) -> str:
+    """Signals are 'research_state'-grounded only when telemetry was actually given."""
+    if research_state and any(research_state.get(k) for k in
+                              ("branches_explored", "branches_open", "rounds_so_far",
+                               "new_info_rate", "stage_summary")):
+        return "research_state"
+    return "inferred"
+
+
+def premature_end_level(atoms: dict) -> str:
+    """High premature-end risk = the §9.3 stop conditions are NOT all met.
+
+    §9.3 'safe to stop' conditions (all must hold):
+      - new sources mostly repeat        -> new_info_rate in {low, none}
+      - no new high-impact meta-question  -> meta_question_search_found_new_high_impact_angle is False
+      - no open high-impact challenges    -> open_high_impact_challenges == 0
+      - challenge map mostly classified   -> challenge_map_mostly_classified is True
+      - unresolved are human/data/decision-> unresolved_are_human_data_decision_only is True
+    Count violations: 0 -> low, 1 -> medium, >=2 -> high.
+    """
+    violations = 0
+    if atoms.get("new_info_rate") not in ("low", "none"):
+        violations += 1
+    if atoms.get("meta_question_search_found_new_high_impact_angle"):
+        violations += 1
+    if int(atoms.get("open_high_impact_challenges", 0) or 0) > 0:
+        violations += 1
+    if not atoms.get("challenge_map_mostly_classified", False):
+        violations += 1
+    if not atoms.get("unresolved_are_human_data_decision_only", False):
+        violations += 1
+    if violations == 0:
+        return "low"
+    return "high" if violations >= 2 else "medium"
+
+
+def drift_level(atoms: dict) -> str:
+    in_set = atoms.get("current_focus_in_original_high_value_set", True)
+    ignored = atoms.get("high_value_branch_ignored", False)
+    if in_set and not ignored:
+        return "low"
+    if (not in_set) and ignored:
+        return "high"
+    return "medium"
+
+
+def rank_next_probe(probes: list[dict]) -> list[dict]:
+    """Deterministic ranking by (impact, answerability) desc; assign 1-based priority."""
+    def key(p):
+        return (_RANK.get(p.get("impact", "medium"), 2),
+                _RANK.get(p.get("answerability", "medium"), 2))
+    ranked = sorted(list(probes or []), key=key, reverse=True)
+    for i, p in enumerate(ranked, 1):
+        p["priority"] = i
+    return ranked
+
+
+def build_risk(level: str, atoms: dict, research_state: dict | None, why: str = "") -> dict:
+    grounded = grounding_of(research_state)
+    return {"level": level, "atoms": atoms, "grounded_in": grounded,
+            "why": why, "low_confidence": grounded == "inferred"}
+```
+
+- [ ] **Step 4: Run → PASS**: `py -3 -m pytest tests/test_signals_grounding.py -v`
+
+- [ ] **Step 5: Commit** `feat: rule-structured signal engine (premature_end/drift/next_probe)`.
+
+---
+
+## Task 6: Prompts
+
+**Files:** Create the 8 prompt files; Test `tests/test_prompts_present.py`.
+
+- [ ] **Step 1: Failing test**
 
 ```python
 # tests/test_prompts_present.py
 import pytest
 from albert.utils import load_prompt
+NAMES = ["albert_persona","intake_grounding","search_reflection","ambiguity_hunt",
+         "challenge_generation","self_critique_auditor","signals_and_gate","verdict_render"]
 
-NAMES = ["albert_persona", "intake_research", "ambiguity_hunt",
-         "soul_interrogation", "self_critique_auditor", "gap_and_gate", "verdict_render"]
+@pytest.mark.parametrize("n", NAMES)
+def test_loads(n):
+    assert len(load_prompt(n)) > 50
 
-@pytest.mark.parametrize("name", NAMES)
-def test_prompt_loads_and_nonempty(name):
-    text = load_prompt(name)
-    assert len(text) > 50
-
-def test_persona_lists_twelve_bones():
-    text = load_prompt("albert_persona")
+def test_persona_has_twelve_bones():
+    t = load_prompt("albert_persona")
     for n in range(1, 13):
-        assert f"{n}." in text
+        assert f"{n}." in t
 
-def test_auditor_is_adversarial():
-    text = load_prompt("self_critique_auditor").lower()
-    assert "adversarial" in text or "do not agree" in text
+def test_auditor_adversarial():
+    assert "adversarial" in load_prompt("self_critique_auditor").lower()
+
+def test_signals_prompt_demands_atoms_not_level():
+    t = load_prompt("signals_and_gate").lower()
+    assert "atom" in t and "do not" in t  # instructs the LLM to give atoms, not the final level
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run → FAIL**: `py -3 -m pytest tests/test_prompts_present.py -v`
 
-Run: `py -3 -m pytest tests/test_prompts_present.py -v`
-Expected: FAIL — `FileNotFoundError` for `albert_persona.txt`
-
-- [ ] **Step 3: Write `albert/prompts/albert_persona.txt`**
+- [ ] **Step 3: Write `albert/prompts/albert_persona.txt`** — the 12-bone persona (verbatim from spec §2):
 
 ```
-You are Albert — a high-standard product & architecture war-room reviewer.
-Your job is NOT to praise and NOT to summarize a meeting. Your job is to force
-DECISION QUALITY: push every claim until the team can no longer dodge WHY this
-choice wins.
+You are Albert — a high-standard product & architecture war-room reviewer, a BU-head
+mind. You do NOT praise and do NOT summarize. You force DECISION QUALITY: push every
+claim until the team can no longer dodge WHY this choice wins and survives a
+leadership challenge.
 
 The 12 bones of your interrogation:
-1. Force every vague term into a precise definition ("no spec" = no high-level / implementation / customer-requirement / winning spec?).
-2. Ask "will it win?" of every feature (must-have / nice-to-have / overkill / competitor-parity; why we win; backup if customer won't buy).
-3. Decompose the product to first principles (application -> service -> latency/deterministic/safety/availability -> compute placement).
-4. Chase local-vs-central compute until it can't be dodged (command-down vs signal-up; actuator / BLDC controller).
-5. Use latency / deterministic numbers to bring fantasy back to reality (latency budget, ADC->compute->PWM path, network-latency=0 justification).
-6. Reverse-engineer competitor strategy (segment cut; tech/cost/customer/legacy; are we benchmarking last gen; next-gen roadmap).
-7. Force a single owner (no 多頭馬車; who decides; what must be answered pre-feasibility; binding risk + fallback).
-8. Separate internal central thesis from external framing (discovery/alignment/commitment/negotiation; what to tell vs only listen).
-9. Converge the war-room NOW (answerable by AI/public/internal know-how now vs truly needs the customer; the 30-point version now).
-10. Ask spec + business + schedule together (cost impact; cut features for lowest price; feasibility ready for a commercial offer).
-11. Red-team the central thesis (where it is most likely wrong: market/tech/customer/cost/schedule/ecosystem; who is the contrarian).
-12. Chase reproducible judgment, not one-off answers (what reusable judgment / checklist this review leaves behind).
+1. Force every vague term into a precise definition.
+2. Ask "will it win?" of every feature (must-have / nice-to-have / overkill / parity; why we win; backup if customer won't buy).
+3. Decompose to first principles (application -> service -> latency/deterministic/safety/availability -> compute placement).
+4. Chase local-vs-central compute (command-down vs signal-up; actuator / BLDC controller).
+5. Use latency / deterministic numbers to bring fantasy back to reality (latency budget, ADC->compute->PWM, network-latency=0 justification).
+6. Reverse-engineer competitor strategy (segment cut; tech/cost/customer/legacy; last-gen benchmark; next-gen roadmap).
+7. Force a single owner (no 多頭馬車; who decides; pre-feasibility; binding risk + fallback).
+8. Separate internal central thesis from external framing.
+9. Converge the war-room NOW (answerable now vs needs customer; the 30-point version now).
+10. Ask spec + business + schedule together (cost; cut features for price; feasibility for a commercial offer).
+11. Red-team the central thesis (where most likely wrong: market/tech/customer/cost/schedule/ecosystem; who is the contrarian).
+12. Chase reproducible judgment, not one-off answers (the reusable checklist this leaves behind).
 
 A question is "soul-grade" only if it (a) targets decision quality not document
 completeness, (b) forces a thesis (winning / first-principle / owner / fallback),
-and (c) is research-backed, not a generic template anyone could ask.
-
-Output language: match the proposal's language (CN/EN mix is fine).
+(c) is research-backed, not a generic template. Output language: match the input.
 ```
 
-- [ ] **Step 4: Write the per-phase prompts**
+- [ ] **Step 4: Write the remaining 7 prompts** with these exact contents:
 
-Each begins by referencing the persona role, then states the task and demands StructuredOutput. Exact contents:
-
-`intake_research.txt`:
+`intake_grounding.txt`:
 ```
-You are Albert preparing to interrogate a proposal. First understand the
-proposal, then identify what external facts you need to ground a sharp review:
-competitor segment cuts, competitor next-gen roadmap, public latency/cost
-benchmarks for this domain. Produce a concise list of search queries and, given
-the provided search results, the 3-6 facts most useful for an un-dodgeable
-interrogation. Be specific to THIS proposal's domain, never generic.
+You are Albert preparing to audit a CURRENT ANSWER. Read the current answer and its
+domain. Decide what external facts you need to ground a sharp audit: competitor
+segment cuts, competitor next-gen roadmap, what a mature SOTA product would do,
+public latency/cost benchmarks for this domain. Output a short list of wave-1 search
+queries specific to THIS answer's domain (never generic).
+```
+
+`search_reflection.txt`:
+```
+You are Albert reflecting between research waves. Given the current answer and the
+wave-1 search results, find the HIGHER-LEVEL meta-question the current answer is NOT
+addressing — the question a BU head would raise that reframes the whole problem
+("what would a mature SOTA product do?"; "is this benchmarking last gen?"). Output a
+reframing, the higher_level_question, and 1-4 wave-2 queries to confirm whether a new
+high-impact angle exists. Emit StructuredOutput.
 ```
 
 `ambiguity_hunt.txt`:
 ```
-You are Albert (bone 1). Read the proposal. List every vague term that hides a
-decision ("no spec", "uncertain", "high performance", "low latency", "the
-customer wants"). Then select the THREE most DANGEROUS — the ones whose
-ambiguity, if left unresolved, would most likely sink the decision. For each:
-the term, why it is dangerous, and the precise question that forces a definition.
-Emit StructuredOutput only.
+You are Albert (bone 1). Read the current answer. List the vague terms that hide a
+decision, then select the THREE most DANGEROUS — the ones whose ambiguity would most
+likely sink the decision in a leadership meeting. For each: term, why dangerous, the
+precise question that forces a definition. Emit StructuredOutput only.
 ```
 
-`soul_interrogation.txt`:
+`challenge_generation.txt`:
 ```
-You are Albert (bones 2-11). Using the proposal, the 3 dangerous ambiguities,
-and the research facts, generate soul questions across these six generators:
-winning, first_principle, timing, competitor, owner_business, convergence_redteam.
-Each question must be soul-grade (decision quality, forces a thesis, research-
-backed). Tag each with its generator and the bone number it comes from. Do NOT
-pad to a fixed count — ask exactly as many as the proposal's weaknesses demand.
-Ground competitor/timing questions in the research facts. Emit StructuredOutput.
+You are Albert (bones 2-11) auditing a CURRENT ANSWER, helped by the dangerous
+ambiguities, research facts, and the meta-question. Produce albert_challenges: for
+each, the challenge, why Albert would ask it, what the current answer says about it
+(current_answer), a status from {answered, partially_answered, needs_external_research,
+needs_internal_data, needs_bu_judgment, needs_albert_decision, needs_source_validation,
+blocked}, confidence, missing_info, blocking_owner, next_action, a meeting_ready_response
+candidate, its generator and bone, and high_impact (true/false). Also produce
+weak_points (with why_it_fails_in_a_meeting), missing_business_context, and
+would_survive_leadership (true/false). Each challenge must be soul-grade and
+research-backed. Do NOT pad to a fixed count. Emit StructuredOutput.
 ```
 
 `self_critique_auditor.txt`:
 ```
-You are an ADVERSARIAL auditor of Albert's own questions. You do NOT agree
-easily. For each soul question, decide: is it sharp (decision-quality, forces a
-thesis, research-backed) or is it WEAK? Classify each weakness:
-- ADDRESSABLE: the question is too vague/generic/document-completeness and CAN
-  be sharpened now — give the sharpening.
-- RESIDUAL: the gap is inherent (only the customer can resolve) — log it.
-Verdict:
-- REWORK if any ADDRESSABLE weakness remains (the questions must be regenerated).
-- EXHAUSTED if every remaining weakness is RESIDUAL (nothing left to sharpen).
-Never rubber-stamp; a passing score hides weakness. Emit StructuredOutput.
+You are an ADVERSARIAL auditor of Albert's own challenges. You do NOT agree easily.
+For each challenge decide: sharp, or WEAK. Classify each weakness ADDRESSABLE (too
+vague/generic/document-completeness — give the sharpening) or RESIDUAL (only the
+customer can resolve). Verdict REWORK if any ADDRESSABLE weakness remains; EXHAUSTED
+if every remaining weakness is RESIDUAL. Never rubber-stamp. Emit StructuredOutput.
 ```
 
-`gap_and_gate.txt`:
+`signals_and_gate.txt`:
 ```
-You are Albert (bones 7, 9, 12). Given the proposal and the soul questions,
-produce: (1) evidence_gaps — for each open question, what evidence is needed and
-who_can_answer it: AI / public / internal (answerable now) vs customer (residual
-until asked). (2) decision_gate — can_decide_now, cannot_decide, and the single
-owner per area (no 多頭馬車). (3) reproducible_judgment — the reusable checklist
-this review leaves behind. Emit StructuredOutput.
+You are Albert producing the loop signals' INPUT ATOMS and the decision gate. Given
+the current answer, the challenges, the research_state telemetry, and the
+meta-question search result, output:
+- premature_end_atoms: open_high_impact_challenges (count), new_info_rate, whether the
+  challenge map is mostly classified, whether unresolved items are human/data/decision
+  only, and whether the meta-question search found a new high-impact angle.
+- drift_atoms: whether current research focus is in the original objective's high-value
+  set, and whether a high-value branch is ignored.
+- recommended_next_probe (each with kind meta/object, impact, answerability), missing_evidence
+  (who_can_answer), decision_gate (can_decide_now/cannot_decide/owners), reproducible_judgment.
+IMPORTANT: report the ATOMS and facts only. Do NOT output the final risk level — the
+system computes the level from your atoms. Emit StructuredOutput.
 ```
 
 `verdict_render.txt`:
 ```
-You are Albert delivering the one-line judgment. Given the ambiguities, soul
-questions, evidence gaps, and decision gate, choose exactly one verdict:
-可推進 / 要補證據 / 方向錯 / 產品定義不完整, a traffic light (green/yellow/red),
-and a readiness_delta in [-2, 2] reflecting how much this review should move the
-proposal's readiness. A proposal with unresolved dangerous ambiguities or
+You are Albert delivering the standalone one-line judgment. Given the ambiguities,
+challenges, risks, and decision gate, choose exactly one verdict (可推進 / 要補證據 /
+方向錯 / 產品定義不完整), a light (green/yellow/red), and readiness_score_delta in
+[-2, 2]. An answer with unresolved dangerous ambiguities, high premature_end_risk, or
 customer-only residual evidence cannot be green. Emit StructuredOutput.
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
-
-Run: `py -3 -m pytest tests/test_prompts_present.py -v`
-Expected: PASS
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add albert/prompts/ tests/test_prompts_present.py
-git commit -m "feat: 12-bone persona + per-phase system prompts"
-```
+- [ ] **Step 5: Run → PASS**. **Step 6: Commit** `feat: 12-bone persona + 7 phase prompts`.
 
 ---
 
-## Task 6: Phase 0 — intake + research
+## Task 7: `albert/input_adapter.py` + Phase 0 (intake + meta-research)
 
-**Files:**
-- Create: `albert/phases/phase_0_intake_research.py`
-- Create: `albert/input_adapter.py` (standalone-text → albert_input shape)
-- Test: `tests/test_phase_0_intake.py`, `tests/test_input_adapter.py`
+**Files:** Create `albert/input_adapter.py`, `albert/phases/phase_0_intake_grounding.py`; Test `tests/test_input_adapter.py`, `tests/test_phase_0_intake.py`.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Failing tests**
 
 ```python
 # tests/test_input_adapter.py
 from albert.input_adapter import build_input
 
-def test_text_becomes_standalone_input():
-    inp = build_input(raw_text="We will build a zonal controller. No spec yet.", input_json=None)
+def test_text_becomes_standalone_with_synth_current_answer():
+    inp = build_input(raw_text="Build a zonal controller. No spec yet.", input_json=None)
     assert inp["mode"] == "standalone"
-    assert "zonal controller" in inp["proposal"]["body"]
+    assert "zonal controller" in inp["current_answer"]
+    assert inp["research_state"] == {}
 
 def test_json_passthrough_is_cockpit(tmp_path):
     import json
-    p = tmp_path / "in.json"
-    p.write_text(json.dumps({"proposal": {"body": "x"}, "mode": "cockpit"}), encoding="utf-8")
+    p = tmp_path/"in.json"
+    p.write_text(json.dumps({"current_answer": "x", "mode": "cockpit",
+                             "research_state": {"new_info_rate": "low"}}), encoding="utf-8")
     inp = build_input(raw_text=None, input_json=str(p))
     assert inp["mode"] == "cockpit"
-    assert inp["proposal"]["body"] == "x"
+    assert inp["research_state"]["new_info_rate"] == "low"
 ```
 
 ```python
 # tests/test_phase_0_intake.py
-from albert.phases.phase_0_intake_research import phase_0_intake_research
+from albert.phases.phase_0_intake_grounding import phase_0_intake_grounding
 
-def test_phase_0_populates_proposal_and_marks_complete(monkeypatch):
-    import albert.phases.phase_0_intake_research as m
-    monkeypatch.setattr(m, "websearch", lambda q: {"query": q, "results": "competitor X moved compute to zone"})
-    monkeypatch.setattr(m, "call_claude", lambda **k: {"queries": ["q1"], "facts": ["fact1"]})
-    state = {"albert_input": {"proposal": {"body": "zonal controller, no spec"}, "mode": "standalone"}}
-    out = phase_0_intake_research(state)
+def test_phase_0_grounds_and_reflects(monkeypatch):
+    import albert.phases.phase_0_intake_grounding as m
+    monkeypatch.setattr(m, "call_claude", lambda **k:
+        {"queries": ["q1"]} if k["purpose"] == "intake_grounding"
+        else {"reframing": "r", "higher_level_question": "hq", "wave2_queries": ["q2"]})
+    monkeypatch.setattr(m, "websearch", lambda q: {"query": q, "results": "SOTA moved compute to zone"})
+    state = {"albert_input": {"current_answer": "zonal controller, no spec",
+                              "mode": "standalone", "proposal": {"domain": "auto"},
+                              "research_state": {}}}
+    out = phase_0_intake_grounding(state)
     assert out["phase_0_complete"] is True
-    assert out["phase_0_status"] in ("passed", "failed")
-    assert out["proposal"]["body"]
-    assert isinstance(out["research"], list)
+    assert out["current_answer"]
+    assert out["meta_question"]["higher_level_question"] == "hq"
+    assert isinstance(out["research"], list) and out["research"]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run → FAIL**: `py -3 -m pytest tests/test_input_adapter.py tests/test_phase_0_intake.py -v`
 
-Run: `py -3 -m pytest tests/test_input_adapter.py tests/test_phase_0_intake.py -v`
-Expected: FAIL — modules not found.
-
-- [ ] **Step 3: Write `albert/input_adapter.py`**
+- [ ] **Step 3: Implement `albert/input_adapter.py`**
 
 ```python
-"""Normalize either a raw proposal (standalone) or a cockpit input JSON into the
-albert_input contract shape."""
+"""Normalize a raw proposal (standalone) or cockpit input JSON into albert_input."""
 import json
 from pathlib import Path
 
@@ -832,143 +855,121 @@ def build_input(raw_text: str | None, input_json: str | None) -> dict:
     if input_json:
         data = json.loads(Path(input_json).read_text(encoding="utf-8"))
         data.setdefault("mode", "cockpit")
+        data.setdefault("current_answer", "")
+        data.setdefault("research_state", {})
         data.setdefault("proposal", {})
-        data["proposal"].setdefault("body", "")
         return data
-    # Standalone: raw text may be a file path or literal text.
     body = raw_text or ""
     p = Path(body)
     if len(body) < 400 and p.exists() and p.is_file():
         body = p.read_text(encoding="utf-8")
     title = body.strip().splitlines()[0][:120] if body.strip() else "(untitled proposal)"
+    # The proposal IS an un-challenged current answer.
     return {
-        "proposal": {"title": title, "body": body, "domain": ""},
+        "mode": "standalone",
+        "current_answer": body,
+        "original_objective": "",
         "issue_map": [], "challenge_map": [], "evidence": [],
-        "draft_answer": "", "readiness": 0, "mode": "standalone",
+        "research_state": {},
+        "proposal": {"title": title, "body": body, "domain": ""},
     }
 ```
 
-- [ ] **Step 4: Write `albert/phases/phase_0_intake_research.py`**
+- [ ] **Step 4: Implement `albert/phases/phase_0_intake_grounding.py`**
 
 ```python
-"""Phase 0: parse input + gather grounding research.
+"""Phase 0: parse input + META-research grounding (wave-1 -> reflect -> wave-2).
 
-Research is OPTIONAL augmentation: websearch() never raises (it degrades to an
-error-tagged result). The phase is 'failed' only if the LLM planning call falls
-back to a stub."""
+Meta-research only (find/confirm higher-level questions & SOTA framing). Object-
+research (answering the issue branches) is the cockpit's job and is NOT done here.
+websearch() never raises; the phase is 'failed' only if the grounding LLM call
+falls back."""
 import sys
 from albert.errors import VisibilityContractError
 from albert.sdk_client import call_claude, websearch
 from albert.models import model_for_role
 from albert.utils import load_prompt
+from albert import schemas
 
-_RESEARCH_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5},
-        "facts": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["queries"],
-}
+_QUERIES_SCHEMA = {"type": "object", "properties": {
+    "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 4}},
+    "required": ["queries"]}
 
 
-def phase_0_intake_research(state: dict) -> dict:
+def phase_0_intake_grounding(state: dict) -> dict:
     inp = state["albert_input"]
-    proposal = inp["proposal"]
-    state["proposal"] = proposal
     state["mode"] = inp.get("mode", "standalone")
+    state["current_answer"] = inp.get("current_answer", "")
+    state["original_objective"] = inp.get("original_objective", "")
+    state["issue_map"] = inp.get("issue_map", [])
+    state["challenge_map"] = inp.get("challenge_map", [])
+    state["evidence"] = inp.get("evidence", [])
+    state["research_state"] = inp.get("research_state", {}) or {}
+    state["proposal"] = inp.get("proposal", {})
 
-    context = (
-        f"Proposal title: {proposal.get('title','')}\n"
-        f"Domain: {proposal.get('domain','')}\n\n"
-        f"Proposal body:\n{proposal.get('body','')[:6000]}\n"
-    )
+    ctx = (f"Current answer:\n{state['current_answer'][:6000]}\n\n"
+           f"Domain: {state['proposal'].get('domain','')}\n")
     status = "passed"
+    research = []
+    meta = {}
     try:
-        plan = call_claude(
-            model=model_for_role("intake_research"),
-            system=load_prompt("intake_research"),
-            user=context,
-            json_schema=_RESEARCH_SCHEMA,
-            purpose="intake_research",
-        )
+        plan = call_claude(model=model_for_role("intake_grounding"),
+                           system=load_prompt("intake_grounding"), user=ctx,
+                           json_schema=_QUERIES_SCHEMA, purpose="intake_grounding")
+        wave1 = [websearch(q) for q in (plan.get("queries") or [])[:4]]
+        research.extend(wave1)
+        # Reflect -> meta-question -> wave-2 (borrowed from ai-escape SEARCH_REFLECTION).
+        refl_ctx = (ctx + "\nWave-1 results:\n" +
+                    "\n".join(f"- {r['query']}: {str(r.get('results',''))[:300]}" for r in wave1))
+        meta = call_claude(model=model_for_role("intake_grounding"),
+                           system=load_prompt("search_reflection"), user=refl_ctx,
+                           json_schema=schemas.SEARCH_REFLECTION, purpose="search_reflection")
+        research.extend(websearch(q) for q in (meta.get("wave2_queries") or [])[:4])
     except VisibilityContractError:
         raise
     except Exception as e:
-        sys.stderr.write(f"[WARN] phase_0 research planning failed: {type(e).__name__}: {str(e)[:200]}; stub\n")
-        plan = {"queries": [], "facts": []}
+        sys.stderr.write(f"[WARN] phase_0 grounding failed: {type(e).__name__}: {str(e)[:200]}; stub\n")
         status = "failed"
 
-    research = []
-    for q in (plan.get("queries") or [])[:5]:
-        research.append(websearch(q))
-    # Carry the LLM-proposed facts alongside raw search hits.
-    if plan.get("facts"):
-        research.append({"query": "_planned_facts", "results": "\n".join(plan["facts"])})
-
     state["research"] = research
+    state["meta_question"] = meta or {}
     state["phase_0_status"] = status
     state["phase_0_complete"] = True
     return state
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `py -3 -m pytest tests/test_input_adapter.py tests/test_phase_0_intake.py -v`
-Expected: PASS
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add albert/phases/phase_0_intake_research.py albert/input_adapter.py tests/test_input_adapter.py tests/test_phase_0_intake.py
-git commit -m "feat: phase 0 intake + grounding research, dual-mode input adapter"
-```
+- [ ] **Step 5: Run → PASS**. **Step 6: Commit** `feat: phase 0 intake + meta-research (wave reflection); dual-mode adapter`.
 
 ---
 
-## Task 7: Phase 1 — ambiguity hunt
+## Task 8: Phase 1 — ambiguity hunt
 
-**Files:**
-- Create: `albert/phases/phase_1_ambiguity_hunt.py`
-- Test: `tests/test_phase_1_ambiguity.py`
+**Files:** Create `albert/phases/phase_1_ambiguity_hunt.py`; Test `tests/test_phase_1_ambiguity.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Failing test**
 
 ```python
 # tests/test_phase_1_ambiguity.py
 from albert.phases.phase_1_ambiguity_hunt import phase_1_ambiguity_hunt
+def _a(t): return {"term": t, "why_dangerous": "w", "precise_question": "p"}
 
-def _amb(term): return {"term": term, "why_dangerous": "w", "precise_question": "p"}
-
-def test_phase_1_keeps_exactly_three(monkeypatch):
+def test_keeps_three(monkeypatch):
     import albert.phases.phase_1_ambiguity_hunt as m
-    monkeypatch.setattr(m, "call_claude",
-        lambda **k: {"top_ambiguities": [_amb("a"), _amb("b"), _amb("c")]})
-    state = {"proposal": {"body": "no spec, uncertain, high perf"}, "research": []}
-    out = phase_1_ambiguity_hunt(state)
-    assert len(out["top_ambiguities"]) == 3
-    assert out["phase_1_complete"] is True
-    assert out["phase_1_status"] == "passed"
+    monkeypatch.setattr(m, "call_claude", lambda **k: {"top_ambiguities": [_a("a"), _a("b"), _a("c")]})
+    out = phase_1_ambiguity_hunt({"current_answer": "no spec", "research": []})
+    assert len(out["top_ambiguities"]) == 3 and out["phase_1_status"] == "passed"
 
-def test_phase_1_stub_on_failure(monkeypatch):
+def test_stub_on_failure(monkeypatch):
     import albert.phases.phase_1_ambiguity_hunt as m
-    def boom(**k): raise RuntimeError("llm down")
-    monkeypatch.setattr(m, "call_claude", boom)
-    state = {"proposal": {"body": "x"}, "research": []}
-    out = phase_1_ambiguity_hunt(state)
-    assert len(out["top_ambiguities"]) == 3   # stub still yields 3
-    assert out["phase_1_status"] == "failed"
+    monkeypatch.setattr(m, "call_claude", lambda **k: (_ for _ in ()).throw(RuntimeError("x")))
+    out = phase_1_ambiguity_hunt({"current_answer": "x", "research": []})
+    assert len(out["top_ambiguities"]) == 3 and out["phase_1_status"] == "failed"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `py -3 -m pytest tests/test_phase_1_ambiguity.py -v`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Write `albert/phases/phase_1_ambiguity_hunt.py`**
+- [ ] **Step 2: Run → FAIL**. **Step 3: Implement**
 
 ```python
-"""Phase 1 (bone 1): hunt vague terms, surface the 3 most dangerous."""
+"""Phase 1 (bone 1): top-3 dangerous ambiguities in the current answer."""
 import sys
 from albert.errors import VisibilityContractError
 from albert.sdk_client import call_claude
@@ -977,113 +978,94 @@ from albert.utils import load_prompt
 from albert import schemas
 
 
-def _stub_ambiguities() -> list[dict]:
-    return [
-        {"term": "(LLM unavailable)", "why_dangerous": "review could not run",
-         "precise_question": "re-run Albert when transport is available"}
-        for _ in range(3)
-    ]
+def _stub():
+    return [{"term": "(LLM unavailable)", "why_dangerous": "review could not run",
+             "precise_question": "re-run Albert when transport is available"} for _ in range(3)]
 
 
-def _research_digest(research: list[dict], limit: int = 3) -> str:
-    out = []
-    for r in (research or [])[:limit]:
-        out.append(f"- {r.get('query','')}: {str(r.get('results',''))[:300]}")
-    return "\n".join(out)
+def _digest(research, n=3):
+    return "\n".join(f"- {r.get('query','')}: {str(r.get('results',''))[:300]}"
+                     for r in (research or [])[:n])
 
 
 def phase_1_ambiguity_hunt(state: dict) -> dict:
-    context = (
-        f"Proposal:\n{state['proposal'].get('body','')[:6000]}\n\n"
-        f"Research facts:\n{_research_digest(state.get('research', []))}\n"
-    )
+    ctx = f"Current answer:\n{state.get('current_answer','')[:6000]}\n\nResearch:\n{_digest(state.get('research'))}\n"
     status = "passed"
     try:
-        result = call_claude(
-            model=model_for_role("ambiguity_hunt"),
-            system=load_prompt("ambiguity_hunt"),
-            user=context,
-            json_schema=schemas.AMBIGUITY_HUNT,
-            purpose="ambiguity_hunt",
-        )
-        top = result.get("top_ambiguities") or []
+        res = call_claude(model=model_for_role("ambiguity_hunt"),
+                          system=load_prompt("ambiguity_hunt"), user=ctx,
+                          json_schema=schemas.AMBIGUITY_HUNT, purpose="ambiguity_hunt")
+        top = res.get("top_ambiguities") or []
     except VisibilityContractError:
         raise
     except Exception as e:
         sys.stderr.write(f"[WARN] phase_1 failed: {type(e).__name__}: {str(e)[:200]}; stub\n")
-        top, status = _stub_ambiguities(), "failed"
-
-    # Defensive: enforce exactly 3.
+        top, status = _stub(), "failed"
     if not isinstance(top, list) or len(top) < 3:
-        top = (top or []) + _stub_ambiguities()
+        top = (top or []) + _stub()
     state["top_ambiguities"] = top[:3]
     state["phase_1_status"] = status
     state["phase_1_complete"] = True
     return state
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `py -3 -m pytest tests/test_phase_1_ambiguity.py -v`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add albert/phases/phase_1_ambiguity_hunt.py tests/test_phase_1_ambiguity.py
-git commit -m "feat: phase 1 ambiguity hunt (top-3 dangerous)"
-```
+- [ ] **Step 4: Run → PASS**. **Step 5: Commit** `feat: phase 1 ambiguity hunt`.
 
 ---
 
-## Task 8: Phase 2 — soul interrogation
+## Task 9: Phase 2 — challenge generation
 
-**Files:**
-- Create: `albert/phases/phase_2_soul_interrogation.py`
-- Test: `tests/test_phase_2_soul.py`
+**Files:** Create `albert/phases/phase_2_challenge_generation.py`; Test `tests/test_phase_2_challenge.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Failing test**
 
 ```python
-# tests/test_phase_2_soul.py
-from albert.phases.phase_2_soul_interrogation import phase_2_soul_interrogation
+# tests/test_phase_2_challenge.py
+from albert.phases.phase_2_challenge_generation import phase_2_challenge_generation
 
-def test_phase_2_generates_questions_and_merges_sharpenings(monkeypatch):
-    import albert.phases.phase_2_soul_interrogation as m
-    monkeypatch.setattr(m, "call_claude", lambda **k: {"soul_questions": [
-        {"q": "why win?", "generator": "winning", "bone": 2},
-        {"q": "latency budget?", "generator": "timing", "bone": 5},
-    ]})
-    state = {"proposal": {"body": "x"}, "research": [], "top_ambiguities": [],
-             "phase_3_rounds": [{"weaknesses": [
-                 {"question_index": 0, "classification": "ADDRESSABLE",
-                  "issue": "too generic", "suggested_sharpening": "tie to competitor roadmap"}]}]}
-    out = phase_2_soul_interrogation(state)
-    assert len(out["soul_questions"]) == 2
+def _resp():
+    return {"albert_challenges": [
+        {"challenge": "why win?", "why_albert_would_ask": "parity", "status": "needs_bu_judgment",
+         "generator": "winning", "bone": 2, "high_impact": True}],
+        "weak_points": [{"point": "no ROI", "why_it_fails_in_a_meeting": "no number"}],
+        "missing_business_context": ["TAM"], "would_survive_leadership": False}
+
+def test_generates(monkeypatch):
+    import albert.phases.phase_2_challenge_generation as m
+    monkeypatch.setattr(m, "call_claude", lambda **k: _resp())
+    out = phase_2_challenge_generation({"current_answer": "x", "research": [],
+                                        "top_ambiguities": [], "meta_question": {}})
+    assert out["albert_challenges"][0]["status"] == "needs_bu_judgment"
+    assert out["would_survive_leadership"] is False
     assert out["phase_2_status"] == "passed"
 
-def test_phase_2_stub_on_failure(monkeypatch):
-    import albert.phases.phase_2_soul_interrogation as m
-    def boom(**k): raise RuntimeError("down")
-    monkeypatch.setattr(m, "call_claude", boom)
-    state = {"proposal": {"body": "x"}, "research": [], "top_ambiguities": []}
-    out = phase_2_soul_interrogation(state)
-    assert out["phase_2_status"] == "failed"
-    assert len(out["soul_questions"]) >= 1
+def test_uses_rework_feedback(monkeypatch):
+    import albert.phases.phase_2_challenge_generation as m
+    captured = {}
+    def fake(**k):
+        captured["user"] = k["user"]; return _resp()
+    monkeypatch.setattr(m, "call_claude", fake)
+    state = {"current_answer": "x", "research": [], "top_ambiguities": [], "meta_question": {},
+             "phase_3_rounds": [{"weaknesses": [{"classification": "ADDRESSABLE",
+                "issue": "vague", "suggested_sharpening": "tie to roadmap"}]}]}
+    phase_2_challenge_generation(state)
+    assert "tie to roadmap" in captured["user"]
+
+def test_stub_on_failure(monkeypatch):
+    import albert.phases.phase_2_challenge_generation as m
+    monkeypatch.setattr(m, "call_claude", lambda **k: (_ for _ in ()).throw(RuntimeError("x")))
+    out = phase_2_challenge_generation({"current_answer": "x", "research": [],
+                                        "top_ambiguities": [], "meta_question": {}})
+    assert out["phase_2_status"] == "failed" and out["albert_challenges"]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `py -3 -m pytest tests/test_phase_2_soul.py -v`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Write `albert/phases/phase_2_soul_interrogation.py`**
+- [ ] **Step 2: Run → FAIL**. **Step 3: Implement**
 
 ```python
-"""Phase 2 (bones 2-11): generate soul questions across the six generators.
+"""Phase 2 (bones 2-11): generate albert_challenges against the current answer.
 
-On a rework loop (phase_3 -> phase_2) the prior round's ADDRESSABLE sharpenings
-are fed back so regeneration is informed, not blind."""
+On a rework loop (phase_3 -> phase_2), the prior round's ADDRESSABLE sharpenings
+are fed back so regeneration is informed."""
 import sys
 from albert.errors import VisibilityContractError
 from albert.sdk_client import call_claude
@@ -1092,136 +1074,106 @@ from albert.utils import load_prompt
 from albert import schemas
 
 
-def _stub_questions() -> list[dict]:
-    return [{"q": "(LLM unavailable — re-run Albert)", "generator": "winning", "bone": 2}]
+def _stub():
+    return {"albert_challenges": [{"challenge": "(LLM unavailable — re-run Albert)",
+            "why_albert_would_ask": "n/a", "status": "blocked", "generator": "winning", "bone": 2}],
+            "weak_points": [], "missing_business_context": [], "would_survive_leadership": False}
 
 
-def _prior_sharpenings(state: dict) -> str:
+def _prior_sharpenings(state):
     rounds = state.get("phase_3_rounds") or []
     if not rounds:
         return ""
-    last = rounds[-1]
-    fixes = [w.get("suggested_sharpening", "")
-             for w in last.get("weaknesses", [])
-             if isinstance(w, dict) and w.get("classification") == "ADDRESSABLE"]
-    fixes = [f for f in fixes if f]
-    if not fixes:
-        return ""
-    return "Prior audit said these questions were too weak — sharpen them:\n" + \
-           "\n".join(f"- {f}" for f in fixes) + "\n\n"
+    fixes = [w.get("suggested_sharpening", "") for w in rounds[-1].get("weaknesses", [])
+             if isinstance(w, dict) and w.get("classification") == "ADDRESSABLE" and w.get("suggested_sharpening")]
+    return ("Prior audit said these were too weak — sharpen them:\n" +
+            "\n".join(f"- {f}" for f in fixes) + "\n\n") if fixes else ""
 
 
-def _digest(items, key, limit=4):
-    return "\n".join(f"- {str(i.get(key, i))[:200]}" for i in (items or [])[:limit])
+def _digest(items, key, n=4):
+    return "\n".join(f"- {str(i.get(key, i))[:200]}" for i in (items or [])[:n])
 
 
-def phase_2_soul_interrogation(state: dict) -> dict:
-    context = (
-        f"{_prior_sharpenings(state)}"
-        f"Proposal:\n{state['proposal'].get('body','')[:6000]}\n\n"
-        f"Dangerous ambiguities:\n{_digest(state.get('top_ambiguities'), 'term')}\n\n"
-        f"Research facts:\n{_digest(state.get('research'), 'results', 3)}\n"
-    )
+def phase_2_challenge_generation(state: dict) -> dict:
+    meta = state.get("meta_question") or {}
+    ctx = (f"{_prior_sharpenings(state)}"
+           f"Current answer:\n{state.get('current_answer','')[:6000]}\n\n"
+           f"Dangerous ambiguities:\n{_digest(state.get('top_ambiguities'), 'term')}\n\n"
+           f"Meta-question: {meta.get('higher_level_question','')}\n\n"
+           f"Research:\n{_digest(state.get('research'), 'results', 3)}\n")
     status = "passed"
     try:
-        result = call_claude(
-            model=model_for_role("soul_interrogation"),
-            system=load_prompt("albert_persona") + "\n\n" + load_prompt("soul_interrogation"),
-            user=context,
-            json_schema=schemas.SOUL_INTERROGATION,
-            purpose="soul_interrogation",
-        )
-        questions = result.get("soul_questions") or []
+        res = call_claude(model=model_for_role("challenge_generation"),
+                          system=load_prompt("albert_persona") + "\n\n" + load_prompt("challenge_generation"),
+                          user=ctx, json_schema=schemas.CHALLENGE_GENERATION, purpose="challenge_generation")
     except VisibilityContractError:
         raise
     except Exception as e:
         sys.stderr.write(f"[WARN] phase_2 failed: {type(e).__name__}: {str(e)[:200]}; stub\n")
-        questions, status = _stub_questions(), "failed"
-
-    if not isinstance(questions, list) or not questions:
-        questions, status = _stub_questions(), "failed"
-    state["soul_questions"] = questions
+        res, status = _stub(), "failed"
+    challenges = res.get("albert_challenges") or []
+    if not challenges:
+        res, status = _stub(), "failed"
+        challenges = res["albert_challenges"]
+    state["albert_challenges"] = challenges
+    state["weak_points"] = res.get("weak_points") or []
+    state["missing_business_context"] = res.get("missing_business_context") or []
+    state["would_survive_leadership"] = bool(res.get("would_survive_leadership", False))
     state["phase_2_status"] = status
     state["phase_2_complete"] = True
     return state
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `py -3 -m pytest tests/test_phase_2_soul.py -v`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add albert/phases/phase_2_soul_interrogation.py tests/test_phase_2_soul.py
-git commit -m "feat: phase 2 soul interrogation with rework-feedback"
-```
+- [ ] **Step 4: Run → PASS**. **Step 5: Commit** `feat: phase 2 challenge generation (§5.2 shape + weak_points + business context)`.
 
 ---
 
-## Task 9: Phase 3 — self-critique audit (exhaustion verdict)
+## Task 10: Phase 3 — self-critique audit
 
-**Files:**
-- Create: `albert/phases/phase_3_self_critique_audit.py`
-- Test: `tests/test_phase_3_audit.py`
+**Files:** Create `albert/phases/phase_3_self_critique_audit.py`; Test `tests/test_phase_3_audit.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Failing test**
 
 ```python
 # tests/test_phase_3_audit.py
 from albert.phases.phase_3_self_critique_audit import phase_3_self_critique_audit
 
-class _FakeSession:
-    def __init__(self, audit): self._audit = audit
+class _Sess:
+    def __init__(self, a): self.a = a
     def __enter__(self): return self
-    def __exit__(self, *a): return False
-    def ask(self, user, purpose="x"): return self._audit
+    def __exit__(self, *x): return False
+    def ask(self, user, purpose="x"):
+        if self.a is None: raise RuntimeError("transport")
+        return self.a
 
-def _patch(monkeypatch, audit):
+def _patch(mp, a):
     import albert.phases.phase_3_self_critique_audit as m
-    monkeypatch.setattr(m, "ClaudeSession", lambda **k: _FakeSession(audit))
+    mp.setattr(m, "ClaudeSession", lambda **k: _Sess(a))
 
-def test_rework_when_addressable(monkeypatch):
+def test_rework(monkeypatch):
     _patch(monkeypatch, {"round": 1, "verdict": "REWORK",
-        "weaknesses": [{"classification": "ADDRESSABLE", "issue": "generic"}]})
-    state = {"soul_questions": [{"q": "x"}]}
-    out = phase_3_self_critique_audit(state)
-    assert out["phase_3_verdict"] == "REWORK"
-    assert out["phase_3_status"] == "passed"
+        "weaknesses": [{"classification": "ADDRESSABLE", "issue": "vague"}]})
+    out = phase_3_self_critique_audit({"albert_challenges": [{"challenge": "x"}]})
+    assert out["phase_3_verdict"] == "REWORK" and out["phase_3_status"] == "passed"
     assert out["phase_3_attempt_count"] == 1
 
-def test_exhausted_when_only_residual(monkeypatch):
+def test_exhausted(monkeypatch):
     _patch(monkeypatch, {"round": 1, "verdict": "EXHAUSTED",
         "weaknesses": [{"classification": "RESIDUAL", "issue": "ask customer"}]})
-    state = {"soul_questions": [{"q": "x"}]}
-    out = phase_3_self_critique_audit(state)
+    out = phase_3_self_critique_audit({"albert_challenges": [{"challenge": "x"}]})
     assert out["phase_3_verdict"] == "EXHAUSTED"
 
-def test_fallback_marks_failed_and_forces_exhausted(monkeypatch):
-    import albert.phases.phase_3_self_critique_audit as m
-    class _Boom(_FakeSession):
-        def ask(self, user, purpose="x"): raise RuntimeError("transport")
-    monkeypatch.setattr(m, "ClaudeSession", lambda **k: _Boom(None))
-    state = {"soul_questions": [{"q": "x"}]}
-    out = phase_3_self_critique_audit(state)
-    assert out["phase_3_status"] == "failed"
-    assert out["phase_3_verdict"] == "EXHAUSTED"   # degraded audit may NOT drive a rework
+def test_fallback_forces_exhausted(monkeypatch):
+    _patch(monkeypatch, None)
+    out = phase_3_self_critique_audit({"albert_challenges": [{"challenge": "x"}]})
+    assert out["phase_3_status"] == "failed" and out["phase_3_verdict"] == "EXHAUSTED"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `py -3 -m pytest tests/test_phase_3_audit.py -v`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Write `albert/phases/phase_3_self_critique_audit.py`**
+- [ ] **Step 2: Run → FAIL**. **Step 3: Implement**
 
 ```python
-"""Phase 3: adversarial self-critique of Albert's own soul questions.
-
-Mirrors skill-ai-escape-mrc/phase_3_rc_audit: classify each question's weakness
-ADDRESSABLE vs RESIDUAL, emit REWORK / EXHAUSTED. A degraded (fallback) audit is
-never allowed to drive a rework (degraded-emission guard)."""
+"""Phase 3: adversarial self-critique of Albert's own challenges (audits sharpness
+only). A degraded (fallback) audit may never drive a rework (degraded guard)."""
 import json
 import sys
 from albert.errors import VisibilityContractError
@@ -1233,27 +1185,20 @@ from albert import schemas
 
 def phase_3_self_critique_audit(state: dict) -> dict:
     state.setdefault("phase_3_rounds", [])
-    system = load_prompt("self_critique_auditor")
     audit = None
-    with ClaudeSession(
-        system=system,
-        model=model_for_role("self_critique_audit"),
-        schema=schemas.SELF_CRITIQUE_AUDIT,
-        allow_tools=True,
-        max_turns=3,
-        timeout_sec=240,
-    ) as sess:
-        user_msg = (
-            "Audit these soul questions. Classify every weakness and give a verdict.\n\n"
-            f"{json.dumps(state['soul_questions'], ensure_ascii=False)[:20000]}\n\n"
-            "Use WebSearch if you need to check whether a question is research-backed."
-        )
+    with ClaudeSession(system=load_prompt("self_critique_auditor"),
+                       model=model_for_role("self_critique_audit"),
+                       schema=schemas.SELF_CRITIQUE_AUDIT, allow_tools=True,
+                       max_turns=3, timeout_sec=240) as sess:
+        user = ("Audit these challenges; classify weaknesses; give a verdict.\n\n"
+                f"{json.dumps(state['albert_challenges'], ensure_ascii=False)[:20000]}\n\n"
+                "Use WebSearch if you need to check whether a challenge is research-backed.")
         try:
-            audit = sess.ask(user_msg, purpose="self_critique_audit")
+            audit = sess.ask(user, purpose="self_critique_audit")
         except VisibilityContractError:
             raise
         except Exception as e:
-            sys.stderr.write(f"[WARN] phase_3 audit failed: {type(e).__name__}: {str(e)[:200]}; fallback\n")
+            sys.stderr.write(f"[WARN] phase_3 failed: {type(e).__name__}: {str(e)[:200]}; fallback\n")
             audit = {"round": 1, "weaknesses": [], "verdict": "EXHAUSTED", "_fallback": True}
 
     if isinstance(audit, list):
@@ -1261,13 +1206,10 @@ def phase_3_self_critique_audit(state: dict) -> dict:
                 {"round": 1, "weaknesses": audit, "verdict": "EXHAUSTED", "_normalized": True}
     if not isinstance(audit, dict):
         audit = {"round": 1, "weaknesses": [], "verdict": "EXHAUSTED", "_fallback": True}
-
     state["phase_3_rounds"].append(audit)
 
     is_fallback = bool(audit.get("_fallback"))
-    raw_verdict = audit.get("verdict")
-    # Degraded audit may never drive a rework.
-    verdict = "REWORK" if (not is_fallback and raw_verdict == "REWORK") else "EXHAUSTED"
+    verdict = "REWORK" if (not is_fallback and audit.get("verdict") == "REWORK") else "EXHAUSTED"
     state["phase_3_verdict"] = verdict
     state["phase_3_status"] = "failed" if is_fallback else "passed"
     state["phase_3_attempt_count"] = state.get("phase_3_attempt_count", 0) + 1
@@ -1275,65 +1217,54 @@ def phase_3_self_critique_audit(state: dict) -> dict:
     return state
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `py -3 -m pytest tests/test_phase_3_audit.py -v`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add albert/phases/phase_3_self_critique_audit.py tests/test_phase_3_audit.py
-git commit -m "feat: phase 3 adversarial self-critique with degraded guard"
-```
+- [ ] **Step 4: Run → PASS**. **Step 5: Commit** `feat: phase 3 adversarial self-critique`.
 
 ---
 
-## Task 10: Phase 4 — evidence gap + decision gate
+## Task 11: Phase 4 — signals & gate (uses the rule engine)
 
-**Files:**
-- Create: `albert/phases/phase_4_gap_and_gate.py`
-- Test: `tests/test_phase_4_gate.py`
+**Files:** Create `albert/phases/phase_4_signals_and_gate.py`; Test `tests/test_phase_4_signals.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Failing test**
 
 ```python
-# tests/test_phase_4_gate.py
-from albert.phases.phase_4_gap_and_gate import phase_4_gap_and_gate
+# tests/test_phase_4_signals.py
+from albert.phases.phase_4_signals_and_gate import phase_4_signals_and_gate
 
-def test_phase_4_populates_gaps_and_gate(monkeypatch):
-    import albert.phases.phase_4_gap_and_gate as m
-    monkeypatch.setattr(m, "call_claude", lambda **k: {
-        "evidence_gaps": [{"item": "roadmap", "who_can_answer": "public"}],
-        "decision_gate": {"can_decide_now": ["scope"], "cannot_decide": ["price"],
-                          "owners": [{"area": "latency", "owner": "TBD"}]},
-        "reproducible_judgment": "checklist",
-    })
-    state = {"proposal": {"body": "x"}, "soul_questions": [{"q": "y"}]}
-    out = phase_4_gap_and_gate(state)
-    assert out["evidence_gaps"][0]["who_can_answer"] == "public"
-    assert "scope" in out["decision_gate"]["can_decide_now"]
+def _resp():
+    return {"premature_end_atoms": {"open_high_impact_challenges": 2, "new_info_rate": "high",
+            "challenge_map_mostly_classified": False, "unresolved_are_human_data_decision_only": False,
+            "meta_question_search_found_new_high_impact_angle": True},
+            "drift_atoms": {"current_focus_in_original_high_value_set": True, "high_value_branch_ignored": False},
+            "recommended_next_probe": [{"probe": "p1", "why": "w", "impact": "high", "answerability": "low"}],
+            "missing_evidence": [{"item": "roadmap", "who_can_answer": "public"}],
+            "decision_gate": {"can_decide_now": [], "cannot_decide": ["price"], "owners": []},
+            "reproducible_judgment": "rj"}
+
+def test_level_computed_from_atoms_not_llm(monkeypatch):
+    import albert.phases.phase_4_signals_and_gate as m
+    monkeypatch.setattr(m, "call_claude", lambda **k: _resp())
+    out = phase_4_signals_and_gate({"current_answer": "x", "albert_challenges": [],
+        "research_state": {"new_info_rate": "high"}})
+    assert out["premature_end_risk"]["level"] == "high"      # rule over atoms
+    assert out["premature_end_risk"]["grounded_in"] == "research_state"
+    assert out["research_drift_risk"]["level"] == "low"
+    assert out["recommended_next_probe"][0]["priority"] == 1
     assert out["phase_4_status"] == "passed"
 
-def test_phase_4_stub_on_failure(monkeypatch):
-    import albert.phases.phase_4_gap_and_gate as m
-    def boom(**k): raise RuntimeError("down")
-    monkeypatch.setattr(m, "call_claude", boom)
-    state = {"proposal": {"body": "x"}, "soul_questions": []}
-    out = phase_4_gap_and_gate(state)
-    assert out["phase_4_status"] == "failed"
-    assert "owners" in out["decision_gate"]
+def test_inferred_when_no_research_state(monkeypatch):
+    import albert.phases.phase_4_signals_and_gate as m
+    monkeypatch.setattr(m, "call_claude", lambda **k: _resp())
+    out = phase_4_signals_and_gate({"current_answer": "x", "albert_challenges": [], "research_state": {}})
+    assert out["premature_end_risk"]["grounded_in"] == "inferred"
+    assert out["premature_end_risk"]["low_confidence"] is True
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `py -3 -m pytest tests/test_phase_4_gate.py -v`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Write `albert/phases/phase_4_gap_and_gate.py`**
+- [ ] **Step 2: Run → FAIL**. **Step 3: Implement**
 
 ```python
-"""Phase 4 (bones 7, 9, 12): evidence gaps + decision gate + reproducible judgment."""
+"""Phase 4 (bones 7,9,12): produce loop-signal ATOMS via LLM, then compute the
+risk LEVELS deterministically via albert.signals (never LLM gestalt)."""
 import json
 import sys
 from albert.errors import VisibilityContractError
@@ -1341,361 +1272,324 @@ from albert.sdk_client import call_claude
 from albert.models import model_for_role
 from albert.utils import load_prompt
 from albert import schemas
+from albert.signals import premature_end_level, drift_level, rank_next_probe, build_risk
 
-_STUB_GATE = {"can_decide_now": [], "cannot_decide": ["(LLM unavailable)"], "owners": []}
+_STUB = {"premature_end_atoms": {"open_high_impact_challenges": 1, "new_info_rate": "unknown",
+         "challenge_map_mostly_classified": False, "unresolved_are_human_data_decision_only": False,
+         "meta_question_search_found_new_high_impact_angle": False},
+         "drift_atoms": {}, "recommended_next_probe": [], "missing_evidence": [],
+         "decision_gate": {"can_decide_now": [], "cannot_decide": ["(LLM unavailable)"], "owners": []},
+         "reproducible_judgment": ""}
 
 
-def phase_4_gap_and_gate(state: dict) -> dict:
-    context = (
-        f"Proposal:\n{state['proposal'].get('body','')[:4000]}\n\n"
-        f"Soul questions:\n{json.dumps(state.get('soul_questions', []), ensure_ascii=False)[:12000]}\n"
-    )
+def phase_4_signals_and_gate(state: dict) -> dict:
+    rs = state.get("research_state") or {}
+    ctx = (f"Current answer:\n{state.get('current_answer','')[:3000]}\n\n"
+           f"Challenges:\n{json.dumps(state.get('albert_challenges', []), ensure_ascii=False)[:10000]}\n\n"
+           f"research_state telemetry:\n{json.dumps(rs, ensure_ascii=False)[:3000]}\n")
     status = "passed"
     try:
-        result = call_claude(
-            model=model_for_role("gap_and_gate"),
-            system=load_prompt("gap_and_gate"),
-            user=context,
-            json_schema=schemas.GAP_AND_GATE,
-            purpose="gap_and_gate",
-        )
+        res = call_claude(model=model_for_role("signals_and_gate"),
+                          system=load_prompt("signals_and_gate"), user=ctx,
+                          json_schema=schemas.SIGNALS_AND_GATE, purpose="signals_and_gate")
     except VisibilityContractError:
         raise
     except Exception as e:
         sys.stderr.write(f"[WARN] phase_4 failed: {type(e).__name__}: {str(e)[:200]}; stub\n")
-        result, status = {}, "failed"
+        res, status = dict(_STUB), "failed"
 
-    state["evidence_gaps"] = result.get("evidence_gaps") or []
-    state["decision_gate"] = result.get("decision_gate") or dict(_STUB_GATE)
-    state["reproducible_judgment"] = result.get("reproducible_judgment") or ""
+    pe_atoms = res.get("premature_end_atoms") or _STUB["premature_end_atoms"]
+    dr_atoms = res.get("drift_atoms") or {}
+    state["premature_end_risk"] = build_risk(premature_end_level(pe_atoms), pe_atoms, rs)
+    state["research_drift_risk"] = build_risk(drift_level(dr_atoms), dr_atoms, rs)
+    state["recommended_next_probe"] = rank_next_probe(res.get("recommended_next_probe") or [])
+    state["missing_evidence"] = res.get("missing_evidence") or []
+    state["decision_gate"] = res.get("decision_gate") or dict(_STUB["decision_gate"])
+    state["reproducible_judgment"] = res.get("reproducible_judgment") or ""
     state["phase_4_status"] = status
     state["phase_4_complete"] = True
     return state
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `py -3 -m pytest tests/test_phase_4_gate.py -v`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add albert/phases/phase_4_gap_and_gate.py tests/test_phase_4_gate.py
-git commit -m "feat: phase 4 evidence gap + decision gate"
-```
+- [ ] **Step 4: Run → PASS**. **Step 5: Commit** `feat: phase 4 signals & gate (rule engine)`.
 
 ---
 
-## Task 11: `albert/render.py` + Phase 5 verdict & emit (degraded guard)
+## Task 12: `albert/render.py` + degraded guard
 
-**Files:**
-- Create: `albert/render.py`
-- Create: `albert/phases/phase_5_verdict_render.py`
-- Create: `templates/albert_report_template.md`
-- Test: `tests/test_phase_5_verdict.py`, `tests/test_degraded_guard.py`
+**Files:** Create `albert/render.py`, `templates/albert_report_template.md`; Test `tests/test_render_degraded_guard.py`.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Failing test**
 
 ```python
-# tests/test_degraded_guard.py
+# tests/test_render_degraded_guard.py
 import pytest
-from albert.render import enforce_degraded_guard
+from albert.render import enforce_degraded_guard, build_challenge
 from albert.errors import DegradedEmissionError
 
-def test_failed_run_cannot_be_green():
+def test_failed_green_raises():
     with pytest.raises(DegradedEmissionError):
-        enforce_degraded_guard(run_status="failed", light="green")
+        enforce_degraded_guard("failed", "green")
 
-def test_failed_run_downgrades_via_caller_contract():
-    # green is forbidden; yellow/red allowed
-    enforce_degraded_guard(run_status="failed", light="red")     # no raise
-    enforce_degraded_guard(run_status="passed", light="green")   # no raise
+def test_allowed_combos():
+    enforce_degraded_guard("failed", "red")
+    enforce_degraded_guard("passed", "green")
+
+def test_build_challenge_has_all_required():
+    c = build_challenge({"top_ambiguities": [], "albert_challenges": [], "weak_points": [],
+        "missing_business_context": [], "missing_evidence": [],
+        "premature_end_risk": {"level": "low", "grounded_in": "inferred"},
+        "research_drift_risk": {"level": "low", "grounded_in": "inferred"},
+        "recommended_next_probe": [], "readiness_score_delta": 0, "run_status": "passed"})
+    for k in ("top_ambiguities", "albert_challenges", "premature_end_risk", "run_status"):
+        assert k in c
 ```
 
-```python
-# tests/test_phase_5_verdict.py
-from albert.phases.phase_5_verdict_render import phase_5_verdict_render
-
-def _base_state(tmp_path, statuses):
-    s = {"run_dir": str(tmp_path), "run_id": "run-test", "mode": "standalone",
-         "proposal": {"title": "T", "body": "b"}, "top_ambiguities": [],
-         "soul_questions": [{"q": "x", "generator": "winning", "bone": 2}],
-         "evidence_gaps": [], "decision_gate": {"can_decide_now": [], "cannot_decide": [], "owners": []},
-         "reproducible_judgment": "rj"}
-    s.update(statuses)
-    return s
-
-def test_passed_run_emits_challenge_json_and_report(tmp_path, monkeypatch):
-    import albert.phases.phase_5_verdict_render as m
-    monkeypatch.setattr(m, "call_claude", lambda **k: {"verdict": "可推進", "light": "green", "readiness_delta": 1})
-    monkeypatch.setattr(m, "send_email", lambda **k: "sent")
-    state = _base_state(tmp_path, {f"phase_{i}_status": "passed" for i in range(5)})
-    out = phase_5_verdict_render(state)
-    assert out["run_status"] == "passed"
-    assert out["light"] == "green"
-    assert out["challenge_json_path"] and out["report_path"]
-
-def test_failed_phase_downgrades_green_to_red(tmp_path, monkeypatch):
-    import albert.phases.phase_5_verdict_render as m
-    monkeypatch.setattr(m, "call_claude", lambda **k: {"verdict": "可推進", "light": "green", "readiness_delta": 2})
-    monkeypatch.setattr(m, "send_email", lambda **k: "sent")
-    state = _base_state(tmp_path, {"phase_0_status": "passed", "phase_1_status": "failed",
-                                   "phase_2_status": "passed", "phase_3_status": "passed",
-                                   "phase_4_status": "passed"})
-    out = phase_5_verdict_render(state)
-    assert out["run_status"] == "failed"
-    assert out["light"] != "green"   # guard downgraded it
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `py -3 -m pytest tests/test_degraded_guard.py tests/test_phase_5_verdict.py -v`
-Expected: FAIL — modules not found.
-
-- [ ] **Step 3: Write `albert/render.py`**
+- [ ] **Step 2: Run → FAIL**. **Step 3: Implement `albert/render.py`**
 
 ```python
-"""Render Albert's challenge to markdown + the cockpit JSON contract, and the
-degraded-emission guard."""
+"""Assemble the albert_challenge contract, the degraded guard, and the markdown report."""
 import json
 from pathlib import Path
 from albert.errors import DegradedEmissionError
 
+_LIGHT = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
+
 
 def enforce_degraded_guard(run_status: str, light: str) -> None:
-    """A degraded run (run_status=='failed') may NOT emit a green light.
-    Raises DegradedEmissionError so the caller downgrades to red (refuse)."""
     if run_status == "failed" and light == "green":
-        raise DegradedEmissionError(
-            "green light on a degraded run is forbidden (R13)", predicate="failed_run_green"
-        )
+        raise DegradedEmissionError("green light on a degraded run is forbidden", "failed_run_green")
 
 
 def build_challenge(state: dict) -> dict:
     return {
+        "audited_answer": state.get("current_answer", ""),
+        "would_survive_leadership": bool(state.get("would_survive_leadership", False)),
         "top_ambiguities": state.get("top_ambiguities", []),
-        "soul_questions": state.get("soul_questions", []),
-        "evidence_gaps": state.get("evidence_gaps", []),
+        "albert_challenges": state.get("albert_challenges", []),
+        "weak_points": state.get("weak_points", []),
+        "missing_business_context": state.get("missing_business_context", []),
+        "missing_evidence": state.get("missing_evidence", []),
+        "premature_end_risk": state.get("premature_end_risk", {"level": "low", "grounded_in": "inferred"}),
+        "research_drift_risk": state.get("research_drift_risk", {"level": "low", "grounded_in": "inferred"}),
+        "recommended_next_probe": state.get("recommended_next_probe", []),
         "decision_gate": state.get("decision_gate", {"can_decide_now": [], "cannot_decide": [], "owners": []}),
-        "verdict": state.get("verdict", "產品定義不完整"),
-        "light": state.get("light", "red"),
-        "readiness_delta": int(state.get("readiness_delta", 0)),
+        "readiness_score_delta": int(state.get("readiness_score_delta", 0)),
         "reproducible_judgment": state.get("reproducible_judgment", ""),
         "run_status": state.get("run_status", "failed"),
+        "verdict": state.get("verdict", "產品定義不完整"),
+        "light": state.get("light", "red"),
     }
 
 
 def write_challenge_json(state: dict, run_dir: Path) -> str:
-    path = Path(run_dir) / "albert_challenge.json"
-    path.write_text(json.dumps(build_challenge(state), ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
-
-
-_LIGHT_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
+    p = Path(run_dir) / "albert_challenge.json"
+    p.write_text(json.dumps(build_challenge(state), ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(p)
 
 
 def render_report(state: dict) -> str:
     c = build_challenge(state)
-    lines = [
-        f"# Albert Review — {state.get('proposal', {}).get('title', '(untitled)')}",
-        "",
-        f"**Verdict:** {c['verdict']} {_LIGHT_EMOJI.get(c['light'], '')}  ·  "
-        f"readiness_delta: {c['readiness_delta']}  ·  run_status: {c['run_status']}",
-        "",
-        "## 最危險的 3 個模糊點",
-    ]
-    for a in c["top_ambiguities"]:
-        lines.append(f"- **{a.get('term','')}** — {a.get('why_dangerous','')}  → {a.get('precise_question','')}")
-    lines += ["", "## 靈魂拷問"]
-    for i, q in enumerate(c["soul_questions"], 1):
-        lines.append(f"{i}. [{q.get('generator','')}/bone{q.get('bone','')}] {q.get('q','')}")
-    lines += ["", "## 必須補的 Evidence"]
-    for g in c["evidence_gaps"]:
-        lines.append(f"- {g.get('item','')} — *who can answer:* {g.get('who_can_answer','')} "
-                     f"({g.get('needed_before','')})")
-    gate = c["decision_gate"]
-    lines += ["", "## Decision Gate",
-              f"- **現在能決定:** {', '.join(gate.get('can_decide_now', [])) or '(none)'}",
-              f"- **現在不能決定:** {', '.join(gate.get('cannot_decide', [])) or '(none)'}",
-              "- **Owners:** " + (", ".join(f"{o.get('area')}→{o.get('owner')}"
-                                            for o in gate.get('owners', [])) or "(none)")]
-    lines += ["", "## 可複用判斷", c["reproducible_judgment"] or "(none)"]
-    return "\n".join(lines)
+    L = [f"# Albert Review — {state.get('proposal', {}).get('title', '(current answer)')}", "",
+         f"**Verdict:** {c['verdict']} {_LIGHT.get(c['light'],'')} · readiness_delta {c['readiness_score_delta']} · "
+         f"run_status {c['run_status']} · would_survive_leadership={c['would_survive_leadership']}", "",
+         f"**premature_end_risk:** {c['premature_end_risk'].get('level')} "
+         f"(grounded_in={c['premature_end_risk'].get('grounded_in')}) · "
+         f"**drift_risk:** {c['research_drift_risk'].get('level')}", "",
+         "## 最危險的 3 個模糊點"]
+    L += [f"- **{a.get('term','')}** — {a.get('why_dangerous','')} → {a.get('precise_question','')}"
+          for a in c["top_ambiguities"]]
+    L += ["", "## 靈魂拷問 (albert_challenges)"]
+    for i, q in enumerate(c["albert_challenges"], 1):
+        L.append(f"{i}. [{q.get('status','')}/{q.get('generator','')}] {q.get('challenge','')}"
+                 f"  ↳ next: {q.get('next_action','')}")
+    L += ["", "## Weak points"] + [f"- {w.get('point','')}: {w.get('why_it_fails_in_a_meeting','')}" for w in c["weak_points"]]
+    L += ["", "## Recommended next probe"]
+    L += [f"{p.get('priority','')}. [{p.get('kind','')}] {p.get('probe','')} — {p.get('why','')}" for p in c["recommended_next_probe"]]
+    L += ["", "## 可複用判斷", c["reproducible_judgment"] or "(none)"]
+    return "\n".join(L)
 
 
 def write_report(state: dict, run_dir: Path) -> str:
-    path = Path(run_dir) / "albert_review.md"
-    path.write_text(render_report(state), encoding="utf-8")
-    return str(path)
+    p = Path(run_dir) / "albert_review.md"
+    p.write_text(render_report(state), encoding="utf-8")
+    return str(p)
 ```
 
-- [ ] **Step 4: Write `templates/albert_report_template.md`**
+- [ ] **Step 4: Write `templates/albert_report_template.md`** (reference layout for humans):
 
 ```markdown
 # Albert Review — {title}
-
-**Verdict:** {verdict} {light}  ·  readiness_delta: {readiness_delta}
-
+**Verdict:** {verdict} {light} · readiness_delta {delta} · would_survive_leadership {survive}
+**premature_end_risk:** {pe} · **drift_risk:** {drift}
 ## 最危險的 3 個模糊點
 {ambiguities}
-
-## 靈魂拷問
-{soul_questions}
-
-## 必須補的 Evidence
-{evidence_gaps}
-
-## Decision Gate
-{decision_gate}
-
+## 靈魂拷問 (albert_challenges)
+{challenges}
+## Weak points
+{weak_points}
+## Recommended next probe
+{next_probe}
 ## 可複用判斷
 {reproducible_judgment}
 ```
 
-- [ ] **Step 5: Write `albert/phases/phase_5_verdict_render.py`**
-
-```python
-"""Phase 5: synthesize verdict + light, apply degraded guard, render + emit."""
-import sys
-from pathlib import Path
-from albert.errors import VisibilityContractError, DegradedEmissionError
-from albert.sdk_client import call_claude
-from albert.models import model_for_role
-from albert.utils import load_prompt
-from albert import schemas
-from albert.render import enforce_degraded_guard, write_challenge_json, write_report
-from albert.email_delivery import send_email
-
-_PHASE_STATUS_KEYS = ["phase_0_status", "phase_1_status", "phase_2_status",
-                      "phase_3_status", "phase_4_status"]
-
-
-def _run_status(state: dict) -> str:
-    return "failed" if any(state.get(k) == "failed" for k in _PHASE_STATUS_KEYS) else "passed"
-
-
-def phase_5_verdict_render(state: dict) -> dict:
-    run_status = _run_status(state)
-    state["run_status"] = run_status
-
-    context = (
-        f"Ambiguities: {state.get('top_ambiguities')}\n"
-        f"Soul questions: {len(state.get('soul_questions', []))}\n"
-        f"Evidence gaps: {state.get('evidence_gaps')}\n"
-        f"Decision gate: {state.get('decision_gate')}\n"
-    )
-    try:
-        v = call_claude(
-            model=model_for_role("verdict_render"),
-            system=load_prompt("verdict_render"),
-            user=context,
-            json_schema=schemas.VERDICT,
-            purpose="verdict_render",
-        )
-        verdict, light = v.get("verdict", "要補證據"), v.get("light", "yellow")
-        delta = int(v.get("readiness_delta", 0))
-    except VisibilityContractError:
-        raise
-    except Exception as e:
-        sys.stderr.write(f"[WARN] phase_5 verdict failed: {type(e).__name__}: {str(e)[:200]}; refuse\n")
-        verdict, light, delta, run_status = "產品定義不完整", "red", -2, "failed"
-        state["run_status"] = run_status
-
-    # Degraded guard: a failed run can never be green — downgrade to red (refuse).
-    try:
-        enforce_degraded_guard(run_status, light)
-    except DegradedEmissionError:
-        light = "red"
-        if verdict == "可推進":
-            verdict = "要補證據"
-
-    state["verdict"], state["light"], state["readiness_delta"] = verdict, light, delta
-
-    run_dir = Path(state["run_dir"])
-    state["challenge_json_path"] = write_challenge_json(state, run_dir)
-    state["report_path"] = write_report(state, run_dir)
-
-    # Email only in standalone mode (cockpit consumes the JSON directly).
-    if state.get("mode") == "standalone" and state.get("user_email"):
-        try:
-            state["email_delivery_result"] = send_email(
-                to=state["user_email"],
-                subject=f"[Albert] {verdict} — {state['proposal'].get('title','review')}",
-                body_path=state["report_path"],
-            )
-        except Exception as e:
-            state["email_delivery_result"] = "failed"
-            state["email_delivery_error"] = f"{type(e).__name__}: {str(e)[:200]}"
-
-    state["phase_5_complete"] = True
-    return state
-```
-
-- [ ] **Step 6: Run tests to verify they pass**
-
-Run: `py -3 -m pytest tests/test_degraded_guard.py tests/test_phase_5_verdict.py -v`
-Expected: PASS
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add albert/render.py albert/phases/phase_5_verdict_render.py templates/albert_report_template.md tests/test_degraded_guard.py tests/test_phase_5_verdict.py
-git commit -m "feat: phase 5 verdict + render + degraded-emission guard"
-```
+- [ ] **Step 5: Run → PASS**. **Step 6: Commit** `feat: render + degraded guard`.
 
 ---
 
-## Task 12: `albert/email_delivery.py`
+## Task 13: `albert/cockpit_contract.py` + R17 contract test
 
-**Files:**
-- Create: `albert/email_delivery.py`
-- Test: `tests/test_email_delivery.py`
+**Files:** Create `albert/cockpit_contract.py`, `docs/albert-cockpit-mapping.md`; Test `tests/test_cockpit_contract.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Failing test**
+
+```python
+# tests/test_cockpit_contract.py
+from albert.cockpit_contract import to_cockpit
+from albert.state import CHALLENGE_STATUSES
+
+def _golden():
+    return {"albert_challenges": [
+        {"challenge": "why win?", "why_albert_would_ask": "parity", "current_answer": "",
+         "status": "needs_bu_judgment", "confidence": "low", "missing_info": "ROI",
+         "blocking_owner": "PM", "next_action": "get ROI", "meeting_ready_response": "..."}],
+        "weak_points": [{"point": "no ROI"}], "missing_business_context": ["TAM"],
+        "missing_evidence": [{"item": "roadmap", "who_can_answer": "public"}],
+        "premature_end_risk": {"level": "high"}, "research_drift_risk": {"level": "low"},
+        "recommended_next_probe": [{"probe": "p", "why": "w", "priority": 1}],
+        "readiness_score_delta": -1}
+
+def test_maps_all_six_three_agent_outputs():
+    out = to_cockpit(_golden())
+    ata = out["albert_thought_agent_outputs"]
+    for k in ("albert_challenges", "weak_points", "missing_business_context", "missing_evidence",
+              "questions_albert_would_ask", "premature_end_risk", "research_drift_risk",
+              "recommended_next_probe", "readiness_score_delta"):
+        assert k in ata
+
+def test_challenge_map_entries_have_status_in_enum():
+    out = to_cockpit(_golden())
+    for e in out["albert_challenge_map_entries"]:
+        assert e["status"] in CHALLENGE_STATUSES
+        assert "meeting_ready_response" in e
+
+def test_questions_are_extracted_from_challenges():
+    out = to_cockpit(_golden())
+    assert out["albert_thought_agent_outputs"]["questions_albert_would_ask"] == ["why win?"]
+```
+
+- [ ] **Step 2: Run → FAIL**. **Step 3: Implement `albert/cockpit_contract.py`**
+
+```python
+"""Reference mapping: albert_challenge.json -> cockpit PRODUCT-SPEC §6.3 outputs +
+§5.2 Albert Challenge Map entries. Proves Albert's output is fit-for-purpose (R17).
+The cockpit owns the production adapter; this is the producer-side proof."""
+from __future__ import annotations
+
+_CHALLENGE_MAP_FIELDS = ["challenge", "why_albert_would_ask", "current_answer", "status",
+                         "confidence", "evidence_refs", "missing_info", "blocking_owner",
+                         "next_action", "meeting_ready_response"]
+
+
+def _entry(ch: dict) -> dict:
+    e = {k: ch.get(k, "") for k in _CHALLENGE_MAP_FIELDS}
+    e["evidence_refs"] = ch.get("evidence_refs", [])
+    return e
+
+
+def to_cockpit(challenge: dict) -> dict:
+    chs = challenge.get("albert_challenges", [])
+    return {
+        "albert_thought_agent_outputs": {                       # §6.3
+            "albert_challenges": chs,
+            "weak_points": challenge.get("weak_points", []),
+            "missing_business_context": challenge.get("missing_business_context", []),
+            "missing_evidence": challenge.get("missing_evidence", []),
+            "questions_albert_would_ask": [c.get("challenge", "") for c in chs],
+            "premature_end_risk": challenge.get("premature_end_risk", {}).get("level"),
+            "research_drift_risk": challenge.get("research_drift_risk", {}).get("level"),
+            "recommended_next_probe": challenge.get("recommended_next_probe", []),
+            "readiness_score_delta": challenge.get("readiness_score_delta", 0),
+        },
+        "albert_challenge_map_entries": [_entry(c) for c in chs],   # §5.2
+    }
+```
+
+- [ ] **Step 4: Write `docs/albert-cockpit-mapping.md`** — the mapping table from spec §6 (Albert field → cockpit §6.3/§5.2 field), with a note that `albert/cockpit_contract.py` is the executable reference and `tests/test_cockpit_contract.py` is the R17 closed-loop anchor.
+
+- [ ] **Step 5: Run → PASS**. **Step 6: Commit** `feat: cockpit_contract reference mapping + R17 contract test + mapping doc`.
+
+---
+
+## Task 14: `albert/email_delivery.py` + Phase 5 assemble & render
+
+**Files:** Create `albert/email_delivery.py`, `albert/phases/phase_5_assemble_render.py`; Test `tests/test_email_delivery.py`, `tests/test_phase_5_assemble.py`.
+
+- [ ] **Step 1: Failing tests**
 
 ```python
 # tests/test_email_delivery.py
 import albert.email_delivery as ed
-
-def test_send_email_returns_sent_when_transport_ok(monkeypatch, tmp_path):
-    p = tmp_path / "r.md"; p.write_text("body", encoding="utf-8")
+def test_sent(monkeypatch, tmp_path):
+    p = tmp_path/"r.md"; p.write_text("b", encoding="utf-8")
     monkeypatch.setattr(ed, "_send_via_outlook", lambda to, subject, body, cc: None)
     assert ed.send_email(to="a@b.com", subject="s", body_path=str(p)) == "sent"
-
-def test_send_email_no_recipient_returns_skipped(tmp_path):
-    p = tmp_path / "r.md"; p.write_text("body", encoding="utf-8")
+def test_skipped_no_recipient(tmp_path):
+    p = tmp_path/"r.md"; p.write_text("b", encoding="utf-8")
     assert ed.send_email(to=None, subject="s", body_path=str(p)) == "skipped"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+```python
+# tests/test_phase_5_assemble.py
+from albert.phases.phase_5_assemble_render import phase_5_assemble_render
 
-Run: `py -3 -m pytest tests/test_email_delivery.py -v`
-Expected: FAIL — module not found.
+def _state(tmp_path, statuses):
+    s = {"run_dir": str(tmp_path), "run_id": "r", "mode": "standalone",
+         "proposal": {"title": "T"}, "current_answer": "a", "top_ambiguities": [],
+         "albert_challenges": [], "weak_points": [], "missing_business_context": [],
+         "missing_evidence": [], "recommended_next_probe": [],
+         "premature_end_risk": {"level": "low", "grounded_in": "inferred"},
+         "research_drift_risk": {"level": "low", "grounded_in": "inferred"},
+         "decision_gate": {"can_decide_now": [], "cannot_decide": [], "owners": []},
+         "reproducible_judgment": "rj"}
+    s.update(statuses); return s
 
-- [ ] **Step 3: Write `albert/email_delivery.py`**
+def test_passed_emits_json_and_report(tmp_path, monkeypatch):
+    import albert.phases.phase_5_assemble_render as m
+    monkeypatch.setattr(m, "call_claude", lambda **k: {"verdict": "可推進", "light": "green", "readiness_score_delta": 1})
+    monkeypatch.setattr(m, "send_email", lambda **k: "skipped")
+    out = phase_5_assemble_render(_state(tmp_path, {f"phase_{i}_status": "passed" for i in range(5)}))
+    assert out["run_status"] == "passed" and out["light"] == "green"
+    assert out["challenge_json_path"] and out["report_path"]
+
+def test_failed_downgrades_green(tmp_path, monkeypatch):
+    import albert.phases.phase_5_assemble_render as m
+    monkeypatch.setattr(m, "call_claude", lambda **k: {"verdict": "可推進", "light": "green", "readiness_score_delta": 2})
+    monkeypatch.setattr(m, "send_email", lambda **k: "skipped")
+    out = phase_5_assemble_render(_state(tmp_path, {"phase_0_status": "passed", "phase_1_status": "failed",
+        "phase_2_status": "passed", "phase_3_status": "passed", "phase_4_status": "passed"}))
+    assert out["run_status"] == "failed" and out["light"] != "green"
+```
+
+- [ ] **Step 2: Run → FAIL**. **Step 3: Implement `albert/email_delivery.py`** (same as the sibling Outlook pattern):
 
 ```python
-"""Outlook COM email delivery (standalone mode only). Config from ~/.claude/email.json.
-
-Mirrors the sibling skills' delivery pattern. Best-effort: returns a status
-string rather than raising on transport failure, so a delivery problem never
-loses the already-written report on disk."""
+"""Outlook COM email (standalone only). Best-effort: returns a status, never raises."""
 import json
 from pathlib import Path
-
-_EMAIL_CFG = Path.home() / ".claude" / "email.json"
+_CFG = Path.home() / ".claude" / "email.json"
 
 
 def _load_cfg() -> dict:
     try:
-        return json.loads(_EMAIL_CFG.read_text(encoding="utf-8"))
+        return json.loads(_CFG.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
 def _send_via_outlook(to: str, subject: str, body: str, cc: str | None) -> None:
-    import win32com.client  # pywin32; only imported on the real send path
+    import win32com.client
     outlook = win32com.client.Dispatch("Outlook.Application")
     mail = outlook.CreateItem(0)
     mail.To = to
@@ -1710,145 +1604,163 @@ def send_email(to: str | None, subject: str, body_path: str, cc: str | None = No
     if not to:
         return "skipped"
     body = Path(body_path).read_text(encoding="utf-8")
-    cc = cc or _load_cfg().get("operator_email")
-    _send_via_outlook(to, subject, body, cc)
+    _send_via_outlook(to, subject, body, cc or _load_cfg().get("operator_email"))
     return "sent"
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Implement `albert/phases/phase_5_assemble_render.py`**
 
-Run: `py -3 -m pytest tests/test_email_delivery.py -v`
-Expected: PASS
+```python
+"""Phase 5: run_status, standalone verdict+light (degraded guard), assemble + emit."""
+import sys
+from pathlib import Path
+from albert.errors import VisibilityContractError, DegradedEmissionError
+from albert.sdk_client import call_claude
+from albert.models import model_for_role
+from albert.utils import load_prompt
+from albert import schemas
+from albert.render import enforce_degraded_guard, write_challenge_json, write_report
+from albert.email_delivery import send_email
 
-- [ ] **Step 5: Commit**
+_STATUS_KEYS = [f"phase_{i}_status" for i in range(5)]
 
-```bash
-git add albert/email_delivery.py tests/test_email_delivery.py
-git commit -m "feat: standalone Outlook email delivery"
+
+def phase_5_assemble_render(state: dict) -> dict:
+    run_status = "failed" if any(state.get(k) == "failed" for k in _STATUS_KEYS) else "passed"
+    state["run_status"] = run_status
+
+    ctx = (f"Ambiguities: {state.get('top_ambiguities')}\n"
+           f"Challenges: {len(state.get('albert_challenges', []))}\n"
+           f"premature_end: {state.get('premature_end_risk', {}).get('level')}\n"
+           f"missing_evidence: {state.get('missing_evidence')}\n")
+    try:
+        v = call_claude(model=model_for_role("verdict_render"), system=load_prompt("verdict_render"),
+                        user=ctx, json_schema=schemas.VERDICT, purpose="verdict_render")
+        verdict, light, delta = v.get("verdict", "要補證據"), v.get("light", "yellow"), int(v.get("readiness_score_delta", 0))
+    except VisibilityContractError:
+        raise
+    except Exception as e:
+        sys.stderr.write(f"[WARN] phase_5 verdict failed: {type(e).__name__}: {str(e)[:200]}; refuse\n")
+        verdict, light, delta, run_status = "產品定義不完整", "red", -2, "failed"
+        state["run_status"] = run_status
+
+    try:
+        enforce_degraded_guard(run_status, light)
+    except DegradedEmissionError:
+        light = "red"
+        if verdict == "可推進":
+            verdict = "要補證據"
+
+    state["verdict"], state["light"], state["readiness_score_delta"] = verdict, light, delta
+    run_dir = Path(state["run_dir"])
+    state["challenge_json_path"] = write_challenge_json(state, run_dir)
+    state["report_path"] = write_report(state, run_dir)
+
+    if state.get("mode") == "standalone" and state.get("user_email"):
+        try:
+            state["email_delivery_result"] = send_email(
+                to=state["user_email"],
+                subject=f"[Albert] {verdict} — {state['proposal'].get('title','review')}",
+                body_path=state["report_path"])
+        except Exception as e:
+            state["email_delivery_result"] = "failed"
+            state["email_delivery_error"] = f"{type(e).__name__}: {str(e)[:200]}"
+
+    state["phase_5_complete"] = True
+    return state
 ```
+
+- [ ] **Step 5: Run → PASS**. **Step 6: Commit** `feat: phase 5 assemble + render + email; degraded guard`.
 
 ---
 
-## Task 13: `albert/graph.py` — FSM wiring + conditional edge
+## Task 15: `albert/graph.py` + topology & exhaustion-loop tests
 
-**Files:**
-- Create: `albert/graph.py`
-- Test: `tests/test_graph_topology.py`, `tests/test_self_critique_loop.py`
+**Files:** Create `albert/graph.py`; Test `tests/test_graph_topology.py`, `tests/test_self_critique_loop.py`.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Failing tests**
 
 ```python
 # tests/test_graph_topology.py
 from albert.graph import build_graph, _route_after_audit, _max_rework
 
-def test_graph_compiles():
-    g = build_graph()
-    assert g is not None
+def test_compiles():
+    assert build_graph() is not None
 
-def test_route_rework_under_cap_loops_back(monkeypatch):
+def test_rework_under_cap_loops(monkeypatch):
     monkeypatch.delenv("ALBERT_MAX_REWORK", raising=False)
-    state = {"phase_3_verdict": "REWORK", "phase_3_attempt_count": 1}
-    assert _route_after_audit(state) == "phase_2_soul_interrogation"
+    assert _route_after_audit({"phase_3_verdict": "REWORK", "phase_3_attempt_count": 1}) == "phase_2_challenge_generation"
 
-def test_route_rework_over_cap_proceeds(monkeypatch):
+def test_rework_over_cap_proceeds(monkeypatch):
     monkeypatch.setenv("ALBERT_MAX_REWORK", "2")
-    state = {"phase_3_verdict": "REWORK", "phase_3_attempt_count": 3}
-    assert _route_after_audit(state) == "phase_4_gap_and_gate"
+    assert _route_after_audit({"phase_3_verdict": "REWORK", "phase_3_attempt_count": 3}) == "phase_4_signals_and_gate"
 
-def test_route_exhausted_proceeds():
-    state = {"phase_3_verdict": "EXHAUSTED", "phase_3_attempt_count": 1}
-    assert _route_after_audit(state) == "phase_4_gap_and_gate"
+def test_exhausted_proceeds():
+    assert _route_after_audit({"phase_3_verdict": "EXHAUSTED", "phase_3_attempt_count": 1}) == "phase_4_signals_and_gate"
 
-def test_max_rework_zero_disables_loop(monkeypatch):
+def test_cap_zero(monkeypatch):
     monkeypatch.setenv("ALBERT_MAX_REWORK", "0")
     assert _max_rework() == 0
-    state = {"phase_3_verdict": "REWORK", "phase_3_attempt_count": 1}
-    assert _route_after_audit(state) == "phase_4_gap_and_gate"
+    assert _route_after_audit({"phase_3_verdict": "REWORK", "phase_3_attempt_count": 1}) == "phase_4_signals_and_gate"
 ```
 
 ```python
 # tests/test_self_critique_loop.py
-"""End-to-end loop: REWORK twice, then EXHAUSTED, honoring the cap."""
+import tempfile
 from albert.graph import build_graph
 
-def test_exhaustion_loop_runs_and_terminates(monkeypatch):
-    import albert.phases.phase_0_intake_research as p0
+def test_loop_terminates(monkeypatch):
+    import albert.phases.phase_0_intake_grounding as p0
     import albert.phases.phase_1_ambiguity_hunt as p1
-    import albert.phases.phase_2_soul_interrogation as p2
+    import albert.phases.phase_2_challenge_generation as p2
     import albert.phases.phase_3_self_critique_audit as p3
-    import albert.phases.phase_4_gap_and_gate as p4
-    import albert.phases.phase_5_verdict_render as p5
-
+    import albert.phases.phase_4_signals_and_gate as p4
+    import albert.phases.phase_5_assemble_render as p5
     monkeypatch.setenv("ALBERT_MAX_REWORK", "2")
-    # Phase 0/1: trivial stubs.
-    monkeypatch.setattr(p0, "call_claude", lambda **k: {"queries": [], "facts": []})
+    monkeypatch.setattr(p0, "call_claude", lambda **k: {"queries": []} if k["purpose"]=="intake_grounding" else {"higher_level_question":"h","wave2_queries":[]})
     monkeypatch.setattr(p0, "websearch", lambda q: {"query": q, "results": ""})
-    monkeypatch.setattr(p1, "call_claude", lambda **k: {"top_ambiguities":
-        [{"term": "t", "why_dangerous": "w", "precise_question": "p"}] * 3})
-    monkeypatch.setattr(p2, "call_claude", lambda **k: {"soul_questions":
-        [{"q": "x", "generator": "winning", "bone": 2}]})
-
-    # Phase 3: REWORK on attempts 1-2, EXHAUSTED on attempt 3.
+    monkeypatch.setattr(p1, "call_claude", lambda **k: {"top_ambiguities": [{"term":"t","why_dangerous":"w","precise_question":"p"}]*3})
+    monkeypatch.setattr(p2, "call_claude", lambda **k: {"albert_challenges":[{"challenge":"x","why_albert_would_ask":"y","status":"blocked","generator":"winning","bone":2}],"weak_points":[],"missing_business_context":[],"would_survive_leadership":False})
     calls = {"n": 0}
-    class _Sess:
-        def __init__(self, **k): pass
+    class _S:
+        def __init__(self,**k): pass
         def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def ask(self, user, purpose="x"):
+        def __exit__(self,*a): return False
+        def ask(self,user,purpose="x"):
             calls["n"] += 1
-            verdict = "REWORK" if calls["n"] < 3 else "EXHAUSTED"
-            return {"round": calls["n"], "weaknesses": [], "verdict": verdict}
-    monkeypatch.setattr(p3, "ClaudeSession", lambda **k: _Sess())
-
-    monkeypatch.setattr(p4, "call_claude", lambda **k: {"evidence_gaps": [],
-        "decision_gate": {"can_decide_now": [], "cannot_decide": [], "owners": []},
-        "reproducible_judgment": "rj"})
-    monkeypatch.setattr(p5, "call_claude", lambda **k: {"verdict": "可推進", "light": "green", "readiness_delta": 1})
+            return {"round": calls["n"], "weaknesses": [], "verdict": "REWORK" if calls["n"]<3 else "EXHAUSTED"}
+    monkeypatch.setattr(p3, "ClaudeSession", lambda **k: _S())
+    monkeypatch.setattr(p4, "call_claude", lambda **k: {"premature_end_atoms":{"open_high_impact_challenges":0,"new_info_rate":"low"},"drift_atoms":{},"recommended_next_probe":[],"missing_evidence":[],"decision_gate":{"can_decide_now":[],"cannot_decide":[],"owners":[]},"reproducible_judgment":"rj"})
+    monkeypatch.setattr(p5, "call_claude", lambda **k: {"verdict":"可推進","light":"green","readiness_score_delta":1})
     monkeypatch.setattr(p5, "send_email", lambda **k: "skipped")
-
     g = build_graph()
-    state = {"albert_input": {"proposal": {"body": "b"}, "mode": "standalone"},
-             "run_dir": str(monkeypatch.__class__ and __import__("tempfile").mkdtemp()),
-             "run_id": "run-loop", "mode": "standalone"}
+    state = {"albert_input": {"current_answer": "a", "mode": "standalone", "proposal": {}, "research_state": {}},
+             "run_dir": tempfile.mkdtemp(), "run_id": "r", "mode": "standalone"}
     final = g.invoke(state, config={"configurable": {"thread_id": "t", "recursion_limit": 100}})
     assert final["phase_5_complete"] is True
-    assert calls["n"] == 3            # looped back twice then exhausted
-    assert final["phase_3_attempt_count"] == 3
+    assert calls["n"] == 3 and final["phase_3_attempt_count"] == 3
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `py -3 -m pytest tests/test_graph_topology.py tests/test_self_critique_loop.py -v`
-Expected: FAIL — `albert.graph` not found.
-
-- [ ] **Step 3: Write `albert/graph.py`**
+- [ ] **Step 2: Run → FAIL**. **Step 3: Implement `albert/graph.py`**
 
 ```python
-"""LangGraph StateGraph for the Albert reviewer FSM.
+"""LangGraph StateGraph for the Albert Thought Agent FSM.
 
-Topology:
-  START
-    -> phase_0_intake_research
-    -> phase_1_ambiguity_hunt
-    -> phase_2_soul_interrogation
-    -> phase_3_self_critique_audit
-        --[REWORK & attempt<=cap]--> phase_2_soul_interrogation
-        --[else]-------------------> phase_4_gap_and_gate
-    -> phase_5_verdict_render
-    -> END
+START -> phase_0 -> phase_1 -> phase_2 -> phase_3
+  phase_3 --[REWORK & attempt<=cap]--> phase_2
+  phase_3 --[else]--> phase_4 -> phase_5 -> END
 """
 import os
 from functools import wraps
 from langgraph.graph import StateGraph, START, END
 from langgraph.errors import GraphInterrupt
 from albert.state import AlbertState
-
-from albert.phases.phase_0_intake_research import phase_0_intake_research
+from albert.phases.phase_0_intake_grounding import phase_0_intake_grounding
 from albert.phases.phase_1_ambiguity_hunt import phase_1_ambiguity_hunt
-from albert.phases.phase_2_soul_interrogation import phase_2_soul_interrogation
+from albert.phases.phase_2_challenge_generation import phase_2_challenge_generation
 from albert.phases.phase_3_self_critique_audit import phase_3_self_critique_audit
-from albert.phases.phase_4_gap_and_gate import phase_4_gap_and_gate
-from albert.phases.phase_5_verdict_render import phase_5_verdict_render
+from albert.phases.phase_4_signals_and_gate import phase_4_signals_and_gate
+from albert.phases.phase_5_assemble_render import phase_5_assemble_render
 
 
 def _max_rework() -> int:
@@ -1860,13 +1772,13 @@ def _max_rework() -> int:
 
 def _route_after_audit(state: dict) -> str:
     if state.get("phase_3_verdict") == "REWORK" and state.get("phase_3_attempt_count", 0) <= _max_rework():
-        return "phase_2_soul_interrogation"
-    return "phase_4_gap_and_gate"
+        return "phase_2_challenge_generation"
+    return "phase_4_signals_and_gate"
 
 
-def _wrap_with_progress(name: str, fn):
+def _wrap(name, fn):
     @wraps(fn)
-    def wrapper(state):
+    def w(state):
         from albert import progress as _p
         from albert.stage_summary import emit_phase_error, emit_phase_start_summary, emit_stage_summary
         emit_phase_start_summary(name, state)
@@ -1874,87 +1786,66 @@ def _wrap_with_progress(name: str, fn):
         try:
             result = fn(state)
             if not isinstance(result, dict):
-                raise TypeError(f"{name} must return dict state patch, got {type(result).__name__}")
+                raise TypeError(f"{name} must return dict, got {type(result).__name__}")
             merged = dict(state); merged.update(result)
             result.update(emit_stage_summary(name, merged))
             _p.phase_end(name, {"ok": True})
             return result
         except GraphInterrupt:
-            _p.emit(name, "phase_interrupt", {"reason": "awaiting_human_approval"}); raise
+            _p.emit(name, "phase_interrupt", {"reason": "interrupt"}); raise
         except Exception as e:
             emit_phase_error(name, state, e)
             _p.emit(name, "phase_error", {"error": type(e).__name__, "message": str(e)[:300]}); raise
-    return wrapper
+    return w
 
 
 def build_graph(checkpointer=None):
     g = StateGraph(AlbertState)
-    g.add_node("phase_0_intake_research", _wrap_with_progress("phase_0_intake_research", phase_0_intake_research))
-    g.add_node("phase_1_ambiguity_hunt", _wrap_with_progress("phase_1_ambiguity_hunt", phase_1_ambiguity_hunt))
-    g.add_node("phase_2_soul_interrogation", _wrap_with_progress("phase_2_soul_interrogation", phase_2_soul_interrogation))
-    g.add_node("phase_3_self_critique_audit", _wrap_with_progress("phase_3_self_critique_audit", phase_3_self_critique_audit))
-    g.add_node("phase_4_gap_and_gate", _wrap_with_progress("phase_4_gap_and_gate", phase_4_gap_and_gate))
-    g.add_node("phase_5_verdict_render", _wrap_with_progress("phase_5_verdict_render", phase_5_verdict_render))
-
-    g.add_edge(START, "phase_0_intake_research")
-    g.add_edge("phase_0_intake_research", "phase_1_ambiguity_hunt")
-    g.add_edge("phase_1_ambiguity_hunt", "phase_2_soul_interrogation")
-    g.add_edge("phase_2_soul_interrogation", "phase_3_self_critique_audit")
-    g.add_conditional_edges(
-        "phase_3_self_critique_audit",
-        _route_after_audit,
-        {"phase_2_soul_interrogation": "phase_2_soul_interrogation",
-         "phase_4_gap_and_gate": "phase_4_gap_and_gate"},
-    )
-    g.add_edge("phase_4_gap_and_gate", "phase_5_verdict_render")
-    g.add_edge("phase_5_verdict_render", END)
+    g.add_node("phase_0_intake_grounding", _wrap("phase_0_intake_grounding", phase_0_intake_grounding))
+    g.add_node("phase_1_ambiguity_hunt", _wrap("phase_1_ambiguity_hunt", phase_1_ambiguity_hunt))
+    g.add_node("phase_2_challenge_generation", _wrap("phase_2_challenge_generation", phase_2_challenge_generation))
+    g.add_node("phase_3_self_critique_audit", _wrap("phase_3_self_critique_audit", phase_3_self_critique_audit))
+    g.add_node("phase_4_signals_and_gate", _wrap("phase_4_signals_and_gate", phase_4_signals_and_gate))
+    g.add_node("phase_5_assemble_render", _wrap("phase_5_assemble_render", phase_5_assemble_render))
+    g.add_edge(START, "phase_0_intake_grounding")
+    g.add_edge("phase_0_intake_grounding", "phase_1_ambiguity_hunt")
+    g.add_edge("phase_1_ambiguity_hunt", "phase_2_challenge_generation")
+    g.add_edge("phase_2_challenge_generation", "phase_3_self_critique_audit")
+    g.add_conditional_edges("phase_3_self_critique_audit", _route_after_audit,
+        {"phase_2_challenge_generation": "phase_2_challenge_generation",
+         "phase_4_signals_and_gate": "phase_4_signals_and_gate"})
+    g.add_edge("phase_4_signals_and_gate", "phase_5_assemble_render")
+    g.add_edge("phase_5_assemble_render", END)
     return g.compile(checkpointer=checkpointer)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `py -3 -m pytest tests/test_graph_topology.py tests/test_self_critique_loop.py -v`
-Expected: PASS. (If `stage_summary` emitters have different names than `emit_phase_start_summary`/`emit_stage_summary`/`emit_phase_error`, align the import/call names with the copied `albert/stage_summary.py`.)
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add albert/graph.py tests/test_graph_topology.py tests/test_self_critique_loop.py
-git commit -m "feat: FSM graph with exhaustion conditional edge"
-```
+- [ ] **Step 4: Run → PASS**. (If `stage_summary` emitter names differ, align imports.) **Step 5: Commit** `feat: FSM graph with exhaustion conditional edge`.
 
 ---
 
-## Task 14: `run_albert.py` CLI + SKILL.md + README
+## Task 16: `run_albert.py` + SKILL.md + README + symlink + smoke
 
-**Files:**
-- Create: `run_albert.py`, `SKILL.md`, `README.md`
+**Files:** Create `run_albert.py`, `SKILL.md`, `README.md`.
 
-- [ ] **Step 1: Write `run_albert.py`**
+- [ ] **Step 1: Implement `run_albert.py`**
 
 ```python
-"""CLI entry point for the Albert reviewer FSM."""
-import argparse
-import json
-import shutil
-import sys
-import time
-import uuid
+"""CLI entry point for the Albert Thought Agent FSM."""
+import argparse, shutil, sys, time, uuid
 from pathlib import Path
-
 from langgraph.checkpoint.sqlite import SqliteSaver
 from albert.graph import build_graph
 from albert.input_adapter import build_input
 
 RUNS_DIR = Path(__file__).parent / "runs"
-RUN_RETENTION_DAYS = 30
+RETENTION_DAYS = 30
 
 
 def main():
     ap = argparse.ArgumentParser(prog="run_albert")
-    ap.add_argument("proposal", nargs="?", help="Proposal text or path to a proposal file")
-    ap.add_argument("--input", dest="input_json", help="albert_input.json (cockpit mode)")
-    ap.add_argument("--json-out", action="store_true", help="Print only the albert_challenge.json path on stdout")
+    ap.add_argument("proposal", nargs="?", help="Proposal text or file path (standalone)")
+    ap.add_argument("--input", dest="input_json", help="albert_input.json (cockpit)")
+    ap.add_argument("--json-out", action="store_true", help="Print only the albert_challenge.json path")
     ap.add_argument("--resume", dest="resume_id")
     ap.add_argument("--gc", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
@@ -1969,57 +1860,49 @@ def main():
     run_id = args.resume_id or f"run-{int(time.time())}-{uuid.uuid4().hex[:8]}"
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-
     if args.dry_run:
         print(f"Would invoke Albert with run_id={run_id}"); return 0
 
-    from albert import progress as _progress
-    _progress.init(run_dir)
+    from albert import progress as _p
+    _p.init(run_dir)
     try:
-        from albert import heartbeat as _heartbeat
-        _heartbeat.start(run_dir, run_id)
+        from albert import heartbeat as _hb
+        _hb.start(run_dir, run_id)
     except Exception as e:
-        sys.stderr.write(f"[run_albert] WARN: heartbeat failed: {e}\n")
+        sys.stderr.write(f"[run_albert] WARN heartbeat: {e}\n")
 
-    db_path = run_dir / "checkpoint.db"
-    with SqliteSaver.from_conn_string(str(db_path)) as checkpointer:
-        graph = build_graph(checkpointer=checkpointer)
+    with SqliteSaver.from_conn_string(str(run_dir / "checkpoint.db")) as cp:
+        graph = build_graph(checkpointer=cp)
         config = {"configurable": {"thread_id": run_id, "recursion_limit": 100}}
         if args.resume_id:
             initial = None
         else:
-            albert_input = build_input(raw_text=args.proposal, input_json=args.input_json)
-            initial = {"albert_input": albert_input, "mode": albert_input["mode"],
-                       "run_id": run_id, "run_dir": str(run_dir), "user_email": args.user_email}
+            ai = build_input(raw_text=args.proposal, input_json=args.input_json)
+            initial = {"albert_input": ai, "mode": ai["mode"], "run_id": run_id,
+                       "run_dir": str(run_dir), "user_email": args.user_email}
         try:
             final = graph.invoke(initial, config=config)
         except Exception as exc:
-            sys.stderr.write(f"[Albert] Run failed: {type(exc).__name__}: {str(exc)[:300]}\n")
-            return 1
+            sys.stderr.write(f"[Albert] Run failed: {type(exc).__name__}: {str(exc)[:300]}\n"); return 1
 
     if not final.get("phase_5_complete"):
         sys.stderr.write(f"Run incomplete. Inspect {run_dir}\n"); return 2
-
     if args.json_out:
-        print(final.get("challenge_json_path", ""))   # machine-consumable stdout for cockpit
+        print(final.get("challenge_json_path", ""))
     else:
-        print("\n".join([
-            f"[Albert] {final.get('verdict')} ({final.get('light')})  readiness_delta={final.get('readiness_delta')}",
-            f"- Report: {final.get('report_path')}",
-            f"- Challenge JSON: {final.get('challenge_json_path')}",
-            f"- Email: {final.get('email_delivery_result') or '(not sent)'}",
-        ]), file=sys.stderr)
-        print(final.get("report_path", ""))            # stdout token = report path
+        sys.stderr.write(f"[Albert] {final.get('verdict')} ({final.get('light')}) "
+                         f"premature_end={final.get('premature_end_risk',{}).get('level')} "
+                         f"delta={final.get('readiness_score_delta')}\n")
+        print(final.get("report_path", ""))
     return 0
 
 
 def _gc():
-    cutoff = time.time() - RUN_RETENTION_DAYS * 86400
-    if not RUNS_DIR.exists():
-        return
-    for d in RUNS_DIR.iterdir():
-        if d.is_dir() and d.stat().st_mtime < cutoff:
-            shutil.rmtree(d, ignore_errors=True)
+    cutoff = time.time() - RETENTION_DAYS * 86400
+    if RUNS_DIR.exists():
+        for d in RUNS_DIR.iterdir():
+            if d.is_dir() and d.stat().st_mtime < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
 
 
 if __name__ == "__main__":
@@ -2031,102 +1914,70 @@ if __name__ == "__main__":
 ```markdown
 ---
 name: skill-cn5-i-am-albert
-description: Use when reviewing or auditing a product / architecture proposal (Gateway / PM / SYS1 / SYS2 / SYS3 / roadmap / customer strategy) and you need a high-standard war-room reviewer that forces decision quality rather than summarizing. Triggers on Albert review, war-room review, soul questions, 靈魂拷問, winning thesis, decision gate, feasibility challenge, competitor strategy review, will-it-win, readiness audit. LangGraph FSM-driven — intake+research, ambiguity hunt, soul interrogation, adversarial self-critique exhaustion loop, evidence gap + decision gate, verdict (可推進/要補證據/方向錯/產品定義不完整) + 紅黃綠燈.
+description: Use when auditing a product/architecture answer or proposal from a high-standard BU-head war-room perspective — simulating how Albert would challenge a current answer to force decision quality, not summarize. Acts as the cockpit's Albert Thought Agent. Triggers on Albert review, war-room audit, 靈魂拷問, would this survive leadership, winning thesis, decision gate, premature stop risk, research drift, competitor strategy, will-it-win, readiness audit. LangGraph FSM — intake+meta-research, ambiguity hunt, challenge generation, adversarial self-critique exhaustion loop, rule-grounded stop/continue/drift signals.
 execution_mode: both
 ---
 
-# Albert — high-standard war-room reviewer (LangGraph-driven)
+# Albert — Albert Thought Agent (LangGraph-driven)
 
-Albert does NOT praise and does NOT summarize. He forces decision quality: every
-vague term gets a precise definition, every feature must justify "will it win?",
-every architecture is pushed on first principles and latency, every strategy
-needs an owner and a fallback. The phase order and exhaustion loop are enforced
-by Python code, not markdown.
+Albert audits a CURRENT ANSWER and asks: would this survive a leadership challenge,
+where is it weak, what should be probed next. He does not praise or summarize. Phase
+order and the exhaustion loop are enforced by Python, not markdown.
 
 ## Invocation
 
-Standalone (review a proposal, get a report + email):
-
-    py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py "<proposal text or file path>" --user-email you@example.com
-
-Cockpit (programmatic — returns the challenge JSON path on stdout):
+Cockpit (programmatic — prints the challenge JSON path):
 
     py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py --input albert_input.json --json-out
 
-Other flags: `--resume <run_id>`, `--gc`, `--dry-run`.
+Standalone (review a proposal → report + email):
 
-## Output
+    py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py "<proposal text or file>" --user-email you@example.com
 
-- `albert_challenge.json` — the schema-validated contract (`schemas/albert_challenge.schema.json`):
-  3 dangerous ambiguities, the soul questions, evidence gaps (who_can_answer),
-  decision gate (owners), verdict, light, readiness_delta.
-- `albert_review.md` — human-readable report (standalone; also emailed).
+Flags: `--resume <run_id>`, `--gc`, `--dry-run`. Env: `ALBERT_MAX_REWORK` (default 2), `ALBERT_FAST_MODEL`.
 
-## Integration contract (R17 seam)
+## Output & contract
 
-The consumer (`skill-cn5-research-cos`) adapts Albert's `albert_challenge.json` to
-its `Auditor` Protocol. Both schemas are producer-owned and live in `schemas/`.
-Do not change them without re-running the cockpit closed-loop test.
+`albert_challenge.json` (schema `schemas/albert_challenge.schema.json`): top_ambiguities,
+albert_challenges (§5.2 entry shape, 8-value status), weak_points, missing_business_context,
+missing_evidence, premature_end_risk / research_drift_risk (rule-grounded), recommended_next_probe,
+readiness_score_delta. Mapping to the cockpit's §6.3/§5.2 is in `docs/albert-cockpit-mapping.md`;
+`albert/cockpit_contract.py` + `tests/test_cockpit_contract.py` prove the seam (R17). Do not change
+the schemas without re-running that test and the cockpit's integration test.
 ```
 
-- [ ] **Step 3: Write `README.md`** (concise: what Albert is, the 12 bones reference to the spec, how to run, how the FSM/exhaustion loop works, env vars `ALBERT_MAX_REWORK` / `ALBERT_FAST_MODEL`, link to the design spec).
+- [ ] **Step 3: Write `README.md`** — what Albert is (Albert Thought Agent for the CN5 cockpit), the 12 bones (link spec), invocation, the FSM/exhaustion loop, the rule-grounded signals, env vars, and the R17 seam artifacts.
 
-- [ ] **Step 4: Verify `--dry-run` and the full suite**
+- [ ] **Step 4: Smoke + full suite**
 
-Run: `py -3 run_albert.py --dry-run "test proposal"`
-Expected: `Would invoke Albert with run_id=run-...`, exit 0
+Run: `py -3 run_albert.py --dry-run "test"` → `Would invoke Albert with run_id=run-...`, exit 0
+Run: `py -3 -m pytest tests/ -v` → all PASS
 
-Run: `py -3 -m pytest tests/ -v`
-Expected: all PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add run_albert.py SKILL.md README.md
-git commit -m "feat: run_albert CLI (standalone + cockpit) + SKILL.md + README"
-```
-
----
-
-## Task 15: Symlink into ~/.claude/skills + smoke run
-
-**Files:** none (environment wiring)
-
-- [ ] **Step 1: Symlink the skill so Claude Code can discover it**
+- [ ] **Step 5: Symlink for discovery**
 
 ```powershell
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\skill-cn5-i-am-albert" -Target "D:\D-claude\skill-cn5-i-am-albert"
 ```
 
-(Per project memory: all skills in `D:/D-claude/skills/skill-*` are symlinked to `~/.claude/skills/`. This skill lives at `D:/D-claude/skill-cn5-i-am-albert`; symlink it the same way.)
-
-- [ ] **Step 2: Full test suite green**
-
-Run: `py -3 -m pytest tests/ -v`
-Expected: all PASS
-
-- [ ] **Step 3: Commit any final fixups**
-
-```bash
-git add -A
-git commit -m "chore: final fixups after full-suite green"
-```
+- [ ] **Step 6: Commit** `feat: run_albert CLI + SKILL.md + README; symlink + green suite`.
 
 ---
 
 ## Self-Review (completed)
 
 **Spec coverage:**
-- §1 dual consumer / producer-owned schemas → Tasks 4, 6 (`build_input`), 14 (`--json-out`).
-- §2 12 bones + 6 generators + soul-grade criteria → Task 5 (`albert_persona.txt`), schema `generator` enum (Task 4), Task 8.
-- §3 FSM phases 0-5 + conditional edge → Tasks 6-11, 13.
-- §3 8 borrowed rebut mechanisms → Task 9 (adversarial auditor, ADDRESSABLE/RESIDUAL, degraded guard, exhaustion verdict), Task 13 (capped graph loop), Task 8 (in-place sharpening feedback).
-- §4 output/input contracts → Task 4.
-- §5 invocation + `ALBERT_MAX_REWORK`/`ALBERT_FAST_MODEL` → Tasks 13, 2, 14.
-- §6 repo layout → all tasks (note: persona is `prompts/albert_persona.txt`, not `agents/` — single source, no drift; recorded as an intentional deviation from the spec's `agents/` line).
-- §7 testing → every task is TDD; topology + self-critique loop + degraded guard + schema + email tests present.
-- §8 open decisions → resolved: copy infra (not shared lib); strong roles = soul/audit/verdict; Phase 0 single-wave research.
+- §1 unified pipeline / dual mode / producer-owned schemas → Tasks 4, 7 (`build_input` synthesizes current_answer), 16 (`--json-out`).
+- §2 12 bones + 6 generators + soul-grade → Task 6 (persona), schema enums (Task 4), Task 9.
+- §3 input incl. `research_state` → Tasks 4, 7.
+- §4 superset output contract incl. §5.2 entry + 8-value status → Task 4; L4 rule-grounded signals → Task 5 (`signals.py`) + Task 11 (Phase 4 uses it).
+- §5 phases 0-5 + conditional edge + job separation → Tasks 7-11, 15; meta vs object research → Task 7 (Phase 0 wave reflection, object-research explicitly not done).
+- §6 seam proof → Task 13 (`cockpit_contract.py`, mapping doc, R17 contract test).
+- §7 invocation + env → Tasks 16, 2.
+- §8 layout → all tasks.
+- §9 testing → every task TDD; `test_signals_grounding` (Task 5), `test_cockpit_contract` (Task 13), `test_degraded_guard` (Task 12), topology + self-critique loop (Task 15).
+- §10 open decisions → resolved in tasks (copy infra; strong roles; wave-1+reflect+wave-2; new_info_rate cockpit-provided).
 
-**Placeholder scan:** README Task 14 Step 3 describes contents rather than full text — acceptable (prose doc, no executable contract). All code steps contain complete code.
+**Placeholder scan:** Task 16 Step 3 (README) describes contents — acceptable (prose doc). All code steps contain complete code.
 
-**Type consistency:** `phase_x_status` keys, `model_for_role` roles (`soul_interrogation`/`self_critique_audit`/`verdict_render` strong), schema names (`AMBIGUITY_HUNT`/`SOUL_INTERROGATION`/`SELF_CRITIQUE_AUDIT`/`GAP_AND_GATE`/`VERDICT`/`ALBERT_CHALLENGE`/`ALBERT_INPUT`), `_route_after_audit` node names — all consistent across tasks.
+**Type consistency:** `phase_x_status` keys, role names (`challenge_generation`/`self_critique_audit`/`verdict_render` strong; `intake_grounding`/`ambiguity_hunt`/`signals_and_gate`), schema names (`AMBIGUITY_HUNT`/`CHALLENGE_GENERATION`/`SELF_CRITIQUE_AUDIT`/`SIGNALS_AND_GATE`/`VERDICT`/`ALBERT_CHALLENGE`/`ALBERT_INPUT`/`SEARCH_REFLECTION`), `signals.py` functions (`premature_end_level`/`drift_level`/`rank_next_probe`/`build_risk`/`grounding_of`), node names (`phase_2_challenge_generation`/`phase_4_signals_and_gate`), `to_cockpit` keys — all consistent across tasks.
+```
