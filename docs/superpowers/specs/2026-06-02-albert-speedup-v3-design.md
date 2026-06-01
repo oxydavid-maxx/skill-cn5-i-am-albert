@@ -2,7 +2,7 @@
 
 - **Skill:** `skill-cn5-i-am-albert`
 - **Date:** 2026-06-02
-- **Status:** design (category-A levers: near-quality-neutral; target ~12.5 → ~10 min)
+- **Status:** design (A near-neutral levers + B4 trim + **C8 pluggable fast search**; target ~12.5 → ~6-7 min)
 - **Builds on:** v2 parallelization (22→15.7 min) + single-wave Phase-0 collapse (→~12.5 min).
 - **Excludes (empirically failed / unavailable, see v2 + dogfood):** Sonnet routing (no speedup on
   this OAuth subscription, reverted), phase-2 fan-out (rate-limit retry storm, reverted), fast mode
@@ -62,18 +62,48 @@ severity, missing_info are unchanged** (the soul). Output roughly halves.
   signal-dense). Near-neutral-to-positive on quality.
 - One-line instruction in `challenge_generation.txt`; no schema change (fields stay, just shorter).
 
+### 2.5 Pluggable fast search backend (C8 — attacks the ~150s search floor)
+Today `websearch()` spawns a full agentic Claude subprocess (WebSearch tool + LLM summary,
+~150s) per query — the single largest cost in the whole run. Replace it with a **pluggable
+search backend** (matches consumer PRODUCT-SPEC §16 "research worker should be replaceable"):
+
+- Abstract `websearch(query)` behind a backend selected by env `ALBERT_SEARCH_BACKEND`:
+  - `agentic` (current; high-quality, ~150s) — **stays the default** until the fast backend is proven.
+  - `tavily` (**recommended fast**) — LLM-native search API: one HTTP call returns reranked,
+    LLM-ready passages + source URLs in ~1-2s, no separate summary needed (~$0.008/query).
+  - `brave` (fastest/cheapest) — 669ms latency, independent index, cheapest; returns SERP
+    snippets (~200 words) which we pass through as the result string.
+  ([Tavily/Brave/Serper comparison](https://aimultiple.com/agentic-search), [Brave Search API](https://brave.com/search/api/))
+- Each backend returns the SAME shape as today: `{query, results, timestamp[, error]}`. The
+  fast backends fill `results` with the API's passages/snippets. `websearch()` stays
+  never-raises (degrade to error-tagged result), so the rest of the pipeline is unchanged.
+- **POC-gated:** needs an API key (`TAVILY_API_KEY` / `BRAVE_API_KEY`). `poc/search_backend_probe.py`
+  issues one query per available backend, prints latency + a result excerpt, and confirms the key
+  works + the content is usable for grounding. If no key is available, the fast backends are
+  inert and `agentic` remains.
+- **Effect: ~150s/search → ~1-3s** → Phase-0 wave wall ~185s → ~5s (Phase 0 ~243s → ~50s, just the
+  intake Opus call). **Quality tradeoff:** API passages are shallower than the agentic tool's
+  multi-turn refinement — mitigated by the breadth of parallel queries and that Albert only needs
+  grounding facts (competitor names, roadmap, standards), not deep synthesis. Default stays
+  `agentic` so the high-quality path is never lost; `tavily` is the opt-in fast path.
+
 ## 3. Expected effect
 
 | Change | Δ | Quality |
 |---|---|---|
 | 2.1 merge P4+P5 | −60-80s | neutral |
-| 2.2 faster websearch | −40-80s | mild risk (env-tunable) |
+| 2.2 faster websearch (max_turns) | −40-80s | mild risk (env-tunable) |
 | 2.3 prompt caching | cost + small TTFT | neutral (POC-gated) |
-| 2.4 trim verbosity (opt) | −60-70s | positive (concision) |
+| 2.4 trim verbosity | −60-70s | positive (concision) |
+| 2.5 fast search backend (C8) | **−~190s** (P0 243→~50s) | tradeoff (default-off; opt-in) |
 
-**Projected: ~12.5 → ~10 min** (2.1 + 2.2); **~9 min** with 2.4. Caching is mainly cost.
-**3-5 min remains unreachable** without fast mode (unavailable) or replacing the agentic websearch
-(separate epic). v3 is the last near-quality-neutral squeeze.
+**Projected:**
+- 2.1 + 2.2 + 2.4 (no C8): ~12.5 → **~9-10 min**.
+- **+ 2.5 C8 (tavily):** Phase 0 collapses to ~50s → **~6-7 min** — the residual floor is then the
+  sequential Opus call chain (intake / challenge / self-critique / merged-signals, ~60-130s each).
+- **3-5 min still needs faster Opus** (fast mode, unavailable here) OR merging more Opus phases
+  (e.g. ambiguity into challenge-gen — a further quality tradeoff). C8 gets closest by killing the
+  search floor; the Opus chain is the remaining wall.
 
 ## 4. Testing
 - `tests/test_phase_4_signals.py` / `test_phase_5_assemble.py` — merged-call shape; `signals.py`
@@ -90,3 +120,6 @@ severity, missing_info are unchanged** (the soul). Output roughly halves.
 - **websearch max_turns** — too low (1) may starve a search; default 3 is the conservative knob.
 - **Merge P4+P5** — the merged prompt is longer; ensure the merged StructuredOutput schema covers
   all fields (`SIGNALS_ACTION_GATE` ∪ `VERDICT`).
+- **C8 search backend** — needs an API key (Tavily/Brave) + per-query cost; default stays `agentic`
+  so the run never breaks without a key. Quality tradeoff (shallower passages) is the reason it's
+  opt-in, not default. POC confirms key + content usability before any default change.
