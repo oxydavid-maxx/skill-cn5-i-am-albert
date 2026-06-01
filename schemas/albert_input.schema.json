@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AlbertInput",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "cockpit",
+        "standalone"
+      ]
+    },
+    "current_answer": {
+      "type": "string"
+    },
+    "original_objective": {
+      "type": "string"
+    },
+    "meeting_context": {
+      "type": "string"
+    },
+    "output_purpose": {
+      "type": "string",
+      "enum": [
+        "meeting_defense",
+        "decision_readiness",
+        "find_blockers",
+        "exec_memo"
+      ]
+    },
+    "issue_map": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "challenge_map": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "skeptic_output": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_critic_output": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "readiness_scores": {
+      "type": "object"
+    },
+    "recent_research_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "research_state": {
+      "type": "object"
+    },
+    "proposal": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "current_answer",
+    "mode"
+  ]
+}
