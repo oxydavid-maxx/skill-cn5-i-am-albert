@@ -3,6 +3,7 @@ Meta-research only; object-research is the cockpit's job. websearch() never rais
 import sys
 from albert.errors import VisibilityContractError
 from albert.sdk_client import call_claude, websearch
+from albert.parallel import parallel_map
 from albert.models import model_for_role
 from albert.utils import load_prompt
 from albert import schemas
@@ -30,14 +31,17 @@ def phase_0_intake_grounding(state: dict) -> dict:
         plan = call_claude(model=model_for_role("intake_grounding"),
                            system=load_prompt("intake_grounding"), user=ctx,
                            json_schema=_QUERIES_SCHEMA, purpose="intake_grounding")
-        wave1 = [websearch(q) for q in (plan.get("queries") or [])[:5]]
+        # Wave-1 searches are independent — fan out in one parallel wave.
+        wave1 = parallel_map(websearch, (plan.get("queries") or [])[:5])
         research.extend(wave1)
         refl_ctx = ctx + "\nWave-1 results:\n" + "\n".join(
             f"- {r['query']}: {str(r.get('results',''))[:300]}" for r in wave1)
+        # Keep the reflection call between waves (sequential dependency on wave-1).
         meta = call_claude(model=model_for_role("intake_grounding"),
                            system=load_prompt("search_reflection"), user=refl_ctx,
                            json_schema=schemas.SEARCH_REFLECTION, purpose="search_reflection")
-        research.extend(websearch(q) for q in (meta.get("wave2_queries") or [])[:4])
+        # Wave-2 searches are independent — fan out in one parallel wave.
+        research.extend(parallel_map(websearch, (meta.get("wave2_queries") or [])[:4]))
     except VisibilityContractError:
         raise
     except Exception as e:
