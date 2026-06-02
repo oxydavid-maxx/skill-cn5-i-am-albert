@@ -6,6 +6,7 @@ from albert.sdk_client import call_claude
 from albert.models import model_for_role
 from albert.utils import load_prompt
 from albert import schemas
+from albert import deliberation
 
 
 def _stub():
@@ -67,4 +68,8 @@ def phase_2_challenge_generation(state: dict) -> dict:
         amb = (amb if isinstance(amb, list) else []) + _amb_stub()
     state["top_ambiguities"] = amb[:3]
     state["phase_2_status"], state["phase_2_complete"] = status, True
+    _round = state.get("phase_3_attempt_count", 0)
+    _label = f"Round {_round + 1} (rework)" if _round else ""
+    deliberation.block("phase_2_challenge_generation", "Phase 2 — Challenge generation",
+                       deliberation.render_challenges(state, _label))
     return state

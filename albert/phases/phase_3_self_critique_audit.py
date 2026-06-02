@@ -14,6 +14,7 @@ from albert.parallel import parallel_run
 from albert.models import model_for_role
 from albert.utils import load_prompt
 from albert import schemas
+from albert import deliberation
 
 NUM_VOTES = 3
 
@@ -101,5 +102,10 @@ def phase_3_self_critique_audit(state: dict) -> dict:
     state["phase_3_attempt_count"] = state.get("phase_3_attempt_count", 0) + 1
     # Carry the union of addressable sharpenings (from real votes) for phase 2 rework feedback.
     state["phase_3_rounds"][-1]["weaknesses"] = assessment["merged"]
+    deliberation.block("phase_3_self_critique_audit", "Phase 3 — Self-critique debate",
+                       deliberation.render_self_critique(votes, assessment, verdict))
+    if verdict == "REWORK":
+        deliberation.block("phase_3_self_critique_audit", "Rework decision",
+                           deliberation.render_rework(state["phase_3_attempt_count"], assessment["merged"]))
     state["phase_3_complete"] = True
     return state

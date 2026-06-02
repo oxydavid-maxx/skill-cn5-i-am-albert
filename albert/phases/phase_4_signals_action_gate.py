@@ -9,6 +9,7 @@ from albert.utils import load_prompt
 from albert import schemas
 from albert.signals import (premature_end_level, drift_level, rank_next_probe,
                             build_risk, enforce_action_consistency)
+from albert import deliberation
 
 _STUB = {"premature_end_atoms": {"open_high_impact_challenges": 1, "new_info_rate": "unknown",
          "challenge_map_mostly_classified": False, "unresolved_are_human_data_decision_only": False,
@@ -56,4 +57,11 @@ def phase_4_signals_action_gate(state: dict) -> dict:
     state["light"] = res.get("light", "yellow")
     state["readiness_score_delta"] = int(res.get("readiness_score_delta", 0))
     state["phase_4_status"], state["phase_4_complete"] = status, True
+    deliberation.block("phase_4_signals_action_gate", "Phase 4 — Signals & action gate",
+                       deliberation.render_signals({
+                           "premature_end_risk": state["premature_end_risk"],
+                           "research_drift_risk": state["research_drift_risk"],
+                           "proposed_next_action": res.get("proposed_next_action", "continue_research"),
+                           "recommended_next_action": state["recommended_next_action"],
+                       }))
     return state

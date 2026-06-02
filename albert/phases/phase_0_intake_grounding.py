@@ -12,6 +12,7 @@ from albert.parallel import parallel_map
 from albert.models import model_for_role
 from albert.utils import load_prompt
 from albert import schemas
+from albert import deliberation
 
 # Single-call schema: queries (object- + meta-level) PLUS a short meta_question framing
 # string so Phase 2 has a higher-level question without a separate reflection call.
@@ -69,4 +70,6 @@ def phase_0_intake_grounding(state: dict) -> dict:
         status = "failed"
     state["research"], state["meta_question"] = research, meta or {}
     state["phase_0_status"], state["phase_0_complete"] = status, True
+    deliberation.block("phase_0_intake_grounding", "Phase 0 — Research grounding",
+                       deliberation.render_research(state))
     return state

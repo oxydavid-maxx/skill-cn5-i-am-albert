@@ -6,6 +6,7 @@ from pathlib import Path
 from albert.errors import DegradedEmissionError
 from albert.render import enforce_degraded_guard, write_challenge_json, write_report
 from albert.email_delivery import send_email
+from albert import deliberation
 
 _STATUS_KEYS = [f"phase_{i}_status" for i in range(5)]
 
@@ -54,5 +55,13 @@ def phase_5_assemble_render(state: dict) -> dict:
             state["email_delivery_result"] = "failed"
             state["email_delivery_error"] = f"{type(e).__name__}: {str(e)[:200]}"
 
+    deliberation.block("phase_5_assemble_render", "Phase 5 — Verdict",
+                       deliberation.render_verdict({
+                           "verdict_standalone": vs,
+                           "light": light,
+                           "readiness_score_delta": delta,
+                           "recommended_next_action": state.get("recommended_next_action", "?"),
+                           "reproducible_judgment": state.get("reproducible_judgment", ""),
+                       }))
     state["phase_5_complete"] = True
     return state
