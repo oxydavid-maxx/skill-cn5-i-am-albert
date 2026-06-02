@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from albert.errors import VisibilityContractError
+from albert import delib_layout as L
 
 _path: Optional[Path] = None
 _emitted: set = set()
@@ -34,7 +35,7 @@ def init(run_dir) -> None:
 
 def block(phase: str, title: str, body: str) -> None:
     """Append a markdown section to deliberation.md AND stream it to stderr live."""
-    md = f"\n## {title}\n\n{body}\n"
+    md = f"\n{body}\n"
     if _path is not None:
         try:
             with open(_path, "a", encoding="utf-8") as f:
@@ -45,7 +46,7 @@ def block(phase: str, title: str, body: str) -> None:
                 phase=phase, sink=str(_path),
             ) from exc
     try:
-        sys.stderr.write(f"\n━━━ DELIBERATION — {title} ━━━\n{body}\n")
+        sys.stderr.write(f"\n{body}\n")
         sys.stderr.flush()
     except Exception as exc:
         raise VisibilityContractError(
@@ -69,95 +70,93 @@ def assert_emitted(phase: str) -> None:
 
 
 def render_research(state: dict) -> str:
+    out = [L.header("PHASE 0 ─ 研究打底")]
     research = state.get("research") or []
     if not research:
-        return "_(no research recorded)_"
-    lines = ["Albert 先問自己:要 audit 這個 thesis,我得先查什麼。Queries fired + findings:"]
+        out.append("(無研究記錄)")
+        return "\n".join(out)
+    out.append("Albert 先問:要 audit 這個 thesis,得先查什麼。")
     for r in research[:8]:
         q = str(r.get("query", "")).strip()
-        res = str(r.get("results", "")).strip().replace("\n", " ")
-        lines.append(f"- **{q}** → {res[:200]}")
-    return "\n".join(lines)
+        out.append(L.bullet(f"{q} → {L.truncate(r.get('results', ''), 90)}"))
+    return "\n".join(out)
 
 
 def render_challenges(state: dict, round_label: str = "") -> str:
-    lines = []
-    if round_label:
-        lines.append(f"_{round_label}_")
+    title = "PHASE 2 ─ 生成拷問" + (f"({round_label})" if round_label else "")
+    out = [L.header(title)]
     ambs = state.get("top_ambiguities") or []
     if ambs:
-        lines.append("**3 個最危險的模糊詞 (先釘死定義):**")
-        for a in ambs:
-            lines.append(f"- `{a.get('term','')}` — {a.get('why_dangerous','')} → {a.get('precise_question','')}")
+        out.append(L.section("先釘死最危險的模糊詞"))
+        for i, a in enumerate(ambs, 1):
+            out.append(L.card(i, len(ambs), f"模糊詞:{a.get('term', '')}",
+                              [f"危險:{a.get('why_dangerous', '')}",
+                               f"釘死:{a.get('precise_question', '')}"]))
     chs = state.get("albert_challenges") or []
-    lines.append(f"\n**Albert 生成的拷問 ({len(chs)}):**")
-    for c in chs:
-        lines.append(
-            f"- **bone #{c.get('bone','?')}** · {c.get('challenge','')}\n"
-            f"  - 為什麼 Albert 會問: {c.get('why_albert_would_ask','')}\n"
-            f"  - severity={c.get('severity','?')} · current-answer={c.get('current_answer_strength','?')}"
-        )
-    return "\n".join(lines)
+    out.append(L.section(f"拷問(共 {len(chs)} 條)"))
+    for i, c in enumerate(chs, 1):
+        meta = (f"骨#{c.get('bone', '?')} · 嚴重度:{L.sev_zh(c.get('severity'))}"
+                f" · 現答:{L.strength_zh(c.get('current_answer_strength'))}")
+        out.append(L.card(i, len(chs), meta,
+                          [f"拷問:{c.get('challenge', '')}",
+                           f"為何問:{c.get('why_albert_would_ask', '')}"]))
+    return "\n".join(out)
 
 
-def _render_one_vote(i: int, vote: dict) -> str:
-    if vote.get("_fallback"):
-        return f"- **Vote {i}**: (failed / fell back — no judgment)"
-    ws = vote.get("weaknesses") or []
-    if not ws:
-        return f"- **Vote {i}** (verdict={vote.get('verdict','?')}): no weaknesses flagged"
-    parts = [f"- **Vote {i}** (verdict={vote.get('verdict','?')}):"]
-    for w in ws:
-        cls = w.get("classification", "?")
-        issue = w.get("issue", "")
-        sharp = w.get("suggested_sharpening", "")
-        line = f"    - [{cls}] {issue}"
-        if sharp:
-            line += f" — 磨利: {sharp}"
-        parts.append(line)
-    return "\n".join(parts)
+def _vote_lines(v: dict) -> list:
+    if v.get("_fallback"):
+        return ["(失敗,無判斷)"]
+    lines = []
+    for w in (v.get("weaknesses") or []):
+        lines.append(f"▸[{L.cls_zh(w.get('classification'))}] {w.get('issue', '')}")
+        if w.get("suggested_sharpening"):
+            lines.append(f"   磨利:{w.get('suggested_sharpening')}")
+    return lines or ["(無弱點)"]
 
 
 def render_self_critique(votes: list, assessment: dict, verdict: str) -> str:
-    lines = ["三個獨立 skeptic 對同一組拷問各自攻防 (≥2 同意才算 addressable):"]
+    out = [L.header("PHASE 3 ─ 自我辯論"),
+           "3 票獨立攻防,≥2 同意才算「可解決」"]
     for i, v in enumerate(votes, 1):
-        lines.append(_render_one_vote(i, v))
+        out.append(L.card(i, len(votes), f"第 {i} 票 · 裁決:{v.get('verdict', '?')}", _vote_lines(v)))
     if assessment.get("degraded"):
-        lines.append("\n**裁決: degraded — 所有 vote 都失敗,不驅動 rework。**")
+        out.append("裁決:degraded — 所有票失敗,不驅動 rework")
     else:
-        k = assessment.get("addressable_votes", 0)
-        lines.append(f"\n**裁決: addressable_votes = {k} of {len(votes)} → {verdict}**")
-    return "\n".join(lines)
+        out.append(f"裁決:可解決票 = {assessment.get('addressable_votes', 0)} / {len(votes)} → {verdict}")
+    return "\n".join(out)
 
 
 def render_rework(round_n: int, merged: list) -> str:
-    lines = [f"**Round {round_n} (rework)** — 這些 sharpenings 還沒被吃掉,所以再繞一圈重生拷問:"]
-    for w in (merged or []):
-        lines.append(f"- {w.get('issue','')}" + (f" → {w.get('suggested_sharpening','')}" if w.get('suggested_sharpening') else ""))
+    out = [L.header("── 重做決策 ──"),
+           f"Round {round_n}:這些磨利還沒被吃掉,再繞一圈重生拷問:"]
     if not merged:
-        lines.append("- (no merged sharpenings recorded)")
-    return "\n".join(lines)
+        out.append(L.bullet("(無 merged 磨利記錄)"))
+    for w in (merged or []):
+        s = w.get("issue", "")
+        if w.get("suggested_sharpening"):
+            s += f" → {w.get('suggested_sharpening')}"
+        out.append(L.bullet(s))
+    return "\n".join(out)
 
 
 def render_signals(merged: dict) -> str:
     pe = merged.get("premature_end_risk") or {}
     dr = merged.get("research_drift_risk") or {}
-    lines = [
-        f"- **premature-end risk**: {pe.get('level','?')} — {pe.get('why','')}",
-        f"- **research-drift risk**: {dr.get('level','?')} — {dr.get('why','')}",
-        f"- proposed action: {merged.get('proposed_next_action','?')}"
-        f" → final (after signal veto): {merged.get('recommended_next_action', merged.get('proposed_next_action','?'))}",
-    ]
-    return "\n".join(lines)
+    final = merged.get("recommended_next_action", merged.get("proposed_next_action", "?"))
+    return "\n".join([
+        L.header("PHASE 4 ─ Signals & 行動閘"),
+        L.kv("提前結束風險", f"{L.sev_zh(pe.get('level'))} — {pe.get('why', '')}"),
+        L.kv("研究偏移風險", f"{L.sev_zh(dr.get('level'))} — {dr.get('why', '')}"),
+        L.kv("建議行動", f"{merged.get('proposed_next_action', '?')} → 經訊號否決後:{final}"),
+    ])
 
 
 def render_verdict(final: dict) -> str:
-    light = final.get("light", "?")
-    emoji = {"green": "\U0001F7E2", "yellow": "\U0001F7E1", "red": "\U0001F534"}.get(light, "")
-    lines = [
-        f"- verdict: {final.get('verdict_standalone','?')} {emoji} ({light})",
-        f"- readiness delta: {final.get('readiness_score_delta','?')}",
-        f"- recommended next action: {final.get('recommended_next_action','?')}",
-        f"- one-line judgment: {final.get('reproducible_judgment','')}",
-    ]
-    return "\n".join(lines)
+    emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(final.get("light", ""), "")
+    return "\n".join([
+        L.header("PHASE 5 ─ 裁決"),
+        L.kv("判定", f"{final.get('verdict_standalone', '?')} {emoji}"),
+        L.kv("準備度變化", str(final.get("readiness_score_delta", "?"))),
+        L.kv("建議下一步", str(final.get("recommended_next_action", "?"))),
+        L.kv("一句話判斷", str(final.get("reproducible_judgment", ""))),
+    ])

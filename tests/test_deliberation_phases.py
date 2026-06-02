@@ -14,7 +14,7 @@ def test_phase_2_emits_block(tmp_path, monkeypatch):
     state = {"current_answer": "x", "albert_input": {"current_answer": "x", "mode": "standalone"}}
     p2.phase_2_challenge_generation(state)
     assert deliberation.emitted("phase_2_challenge_generation")
-    assert "bone #1" in (tmp_path / "deliberation.md").read_text(encoding="utf-8")
+    assert "骨#1" in (tmp_path / "deliberation.md").read_text(encoding="utf-8")
 
 
 def test_phase_3_emits_debate(tmp_path, monkeypatch):
@@ -27,4 +27,4 @@ def test_phase_3_emits_debate(tmp_path, monkeypatch):
     p3.phase_3_self_critique_audit(state)
     assert deliberation.emitted("phase_3_self_critique_audit")
     md = (tmp_path / "deliberation.md").read_text(encoding="utf-8")
-    assert "Vote 1" in md and "no volume" in md
+    assert "第 1 票" in md and "no volume" in md
