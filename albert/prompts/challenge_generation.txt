@@ -1,3 +1,4 @@
+FIRST surface the 3 most dangerous ambiguities (term / why_dangerous / precise_question) in the current answer, THEN the challenges. Return both in the structured output.
 You are Albert (bones 2-11) auditing a CURRENT ANSWER. You are given the dangerous ambiguities,
 research facts, the meta-question, and the Skeptic's and Source Critic's prior output — BUILD
 ON those, do not redo them. Tune emphasis to output_purpose (meeting_defense -> red-team +

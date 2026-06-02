@@ -31,3 +31,17 @@ def test_stub(monkeypatch):
     out = phase_2_challenge_generation({"current_answer": "x", "research": [], "top_ambiguities": [],
         "meta_question": {}, "skeptic_output": [], "source_critic_output": [], "output_purpose": "x"})
     assert out["phase_2_status"] == "failed" and out["albert_challenges"]
+
+
+def _amb(t): return {"term": t, "why_dangerous": "w", "precise_question": "p"}
+def test_phase_2_emits_top_ambiguities(monkeypatch):
+    import albert.phases.phase_2_challenge_generation as m
+    monkeypatch.setattr(m, "call_claude", lambda **k: {
+        "albert_challenges": [{"challenge": "c", "why_albert_would_ask": "y", "status": "blocked",
+                               "severity": "high", "current_answer_strength": "weak",
+                               "generator": "winning", "bone": 2}],
+        "weak_points": [], "missing_business_context": [], "would_survive_leadership": False,
+        "top_ambiguities": [_amb("a"), _amb("b"), _amb("c")]})
+    out = m.phase_2_challenge_generation({"current_answer": "x", "research": [], "meta_question": {},
+        "skeptic_output": [], "source_critic_output": [], "output_purpose": "x"})
+    assert len(out["top_ambiguities"]) == 3

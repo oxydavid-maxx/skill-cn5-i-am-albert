@@ -64,6 +64,18 @@ CHALLENGE_GENERATION = {
     "required": ["albert_challenges", "weak_points", "would_survive_leadership"],
 }
 
+# Ambiguity-hunt is folded into challenge generation (v3.2): the same call FIRST
+# surfaces the 3 most dangerous ambiguities, THEN the challenges. Reuse the
+# AMBIGUITY_HUNT item shape (exactly 3).
+CHALLENGE_GENERATION["properties"]["top_ambiguities"] = {
+    "type": "array", "items": {"type": "object", "properties": {
+        "term": {"type": "string"}, "why_dangerous": {"type": "string"},
+        "precise_question": {"type": "string"}},
+        "required": ["term", "why_dangerous", "precise_question"]},
+    "minItems": 3, "maxItems": 3,
+}
+CHALLENGE_GENERATION["required"] = CHALLENGE_GENERATION["required"] + ["top_ambiguities"]
+
 SELF_CRITIQUE_AUDIT = {
     "type": "object",
     "properties": {

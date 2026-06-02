@@ -15,6 +15,11 @@ def _stub():
             "weak_points": [], "missing_business_context": [], "would_survive_leadership": False}
 
 
+def _amb_stub():
+    return [{"term": "(LLM unavailable)", "why_dangerous": "review could not run",
+             "precise_question": "re-run Albert"} for _ in range(3)]
+
+
 def _prior_sharpenings(state):
     rounds = state.get("phase_3_rounds") or []
     if not rounds:
@@ -55,5 +60,11 @@ def phase_2_challenge_generation(state: dict) -> dict:
     state["weak_points"] = res.get("weak_points") or []
     state["missing_business_context"] = res.get("missing_business_context") or []
     state["would_survive_leadership"] = bool(res.get("would_survive_leadership", False))
+    # Ambiguity-hunt folded in (v3.2): take top_ambiguities from the result that
+    # returned a non-empty list; if none, pad with a 3-item stub. Always exactly 3.
+    amb = res.get("top_ambiguities") or []
+    if not isinstance(amb, list) or len(amb) < 3:
+        amb = (amb if isinstance(amb, list) else []) + _amb_stub()
+    state["top_ambiguities"] = amb[:3]
     state["phase_2_status"], state["phase_2_complete"] = status, True
     return state
