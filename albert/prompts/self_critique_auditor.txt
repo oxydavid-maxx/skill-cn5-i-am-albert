@@ -3,4 +3,4 @@ challenge: sharp, or WEAK? Classify each weakness addressable (too vague/generic
 sharpening) or residual (only the customer can resolve). Verdict rework if any addressable
 weakness remains; exhausted if every remaining weakness is residual; continue if more research
 is warranted before judging. Never rubber-stamp; but do NOT invent flaws in a sound challenge
-just to look busy. Emit StructuredOutput.
+just to look busy. Judge whether each challenge is supported by the provided research findings; do NOT search the web. Emit StructuredOutput.

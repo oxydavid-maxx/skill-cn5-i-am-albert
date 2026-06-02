@@ -52,3 +52,14 @@ def test_all_votes_fail_marks_failed_and_exhausted(monkeypatch):
     _patch(monkeypatch, [None, None, None])
     out = phase_3_self_critique_audit({"albert_challenges": [{"challenge": "x"}]})
     assert out["phase_3_status"] == "failed" and out["phase_3_verdict"] == "EXHAUSTED"
+
+
+def test_votes_do_not_use_tools(monkeypatch):
+    import albert.phases.phase_3_self_critique_audit as m
+    captured = {}
+    def fake(**k):
+        captured["allow_tools"] = k.get("allow_tools")
+        return {"round": 1, "verdict": "exhausted", "weaknesses": []}
+    monkeypatch.setattr(m, "call_claude", fake)
+    m.phase_3_self_critique_audit({"albert_challenges": [{"challenge": "x"}], "research": [{"query":"q","results":"r"}]})
+    assert captured["allow_tools"] is False

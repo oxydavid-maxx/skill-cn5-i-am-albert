@@ -49,17 +49,20 @@ def _converged(assessment: dict) -> str:
     return "EXHAUSTED"
 
 
-def _one_vote(v: int, payload: str) -> dict:
+def _one_vote(v: int, payload: str, digest: str) -> dict:
     """Run a single independent audit vote as a stateless call. Returns the
-    audit dict, or a _fallback stub on (non-visibility) failure."""
+    audit dict, or a _fallback stub on (non-visibility) failure.
+
+    The vote judges 'research-backed' against the research already gathered in
+    state (passed in as ``digest``); it does NOT re-search the web."""
     user = (f"Vote {v} of {NUM_VOTES}. Audit these challenges from a fresh, skeptical angle; "
-            f"classify weaknesses; give a verdict.\n\n{payload}\n\n"
-            "Use WebSearch to check whether a challenge is research-backed.")
+            f"classify each weakness; give a verdict.\n\nChallenges:\n{payload}\n\n"
+            f"Research already gathered (judge 'research-backed' against THIS, do not search):\n{digest}\n")
     try:
         a = call_claude(model=model_for_role("self_critique_audit"),
                         system=load_prompt("self_critique_auditor"),
                         user=user, json_schema=schemas.SELF_CRITIQUE_AUDIT,
-                        allow_tools=True, max_turns=3, timeout_sec=240,
+                        allow_tools=False, timeout_sec=240,
                         purpose=f"self_critique_audit_vote_{v}")
         if isinstance(a, list):
             a = a[0] if (len(a) == 1 and isinstance(a[0], dict)) else {"weaknesses": a, "verdict": "exhausted"}
@@ -77,11 +80,16 @@ def phase_3_self_critique_audit(state: dict) -> dict:
     state.setdefault("phase_3_rounds", [])
     payload = json.dumps(state["albert_challenges"], ensure_ascii=False)[:20000]
 
+    # Build a digest of the research already gathered ONCE; each vote judges
+    # 'research-backed' against this instead of re-searching the web.
+    research = state.get("research") or []
+    digest = "\n".join(f"- {r.get('query','')}: {str(r.get('results',''))[:300]}" for r in research[:6])
+
     # The 3 votes are independent -> fan out as parallel stateless calls.
     # VisibilityContractError from any vote propagates through parallel_run.result()
     # and aborts the phase.
     votes = parallel_run([
-        (lambda v=v: _one_vote(v, payload)) for v in range(1, NUM_VOTES + 1)
+        (lambda v=v: _one_vote(v, payload, digest)) for v in range(1, NUM_VOTES + 1)
     ])
 
     state["phase_3_rounds"].append({"votes": votes})
