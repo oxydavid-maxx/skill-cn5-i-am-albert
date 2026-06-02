@@ -16,3 +16,4 @@ In the SAME structured output, also deliver the standalone one-line judgment:
 IMPORTANT: report the ATOMS, a PROPOSED action, and the verdict-presentation fields only.
 Do NOT output the final risk LEVELS — the system computes the levels from your atoms and may
 veto an inconsistent action. Emit StructuredOutput.
+以繁體中文輸出。技術名詞(TC4, ASIL, Ethernet, AUTOSAR, gateway, MCU, zonal, OEM…)保留英文原文,不要硬翻。

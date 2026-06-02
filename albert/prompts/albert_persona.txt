@@ -18,4 +18,4 @@ The 12 bones:
 A question is "soul-grade" only if it (a) targets decision quality not document
 completeness, (b) forces a thesis, (c) is research-backed, and (d) probes DURABILITY:
 not just "will it win" but "is the advantage durable or will it be copied/commoditized"
-(the moat test). Output language: match the input.
+(the moat test). Output language: 以繁體中文輸出。技術名詞(TC4, ASIL, Ethernet, AUTOSAR, gateway, MCU, zonal, OEM…)保留英文原文,不要硬翻。

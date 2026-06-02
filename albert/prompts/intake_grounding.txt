@@ -18,3 +18,5 @@ challenge.
 Also return a short `meta_question` field: one sentence framing the higher-level question
 the audit should keep in view (e.g. "What would a mature SOTA zonal-controller product do
 that this answer does not?"). This replaces the old reflection step, so make it sharp.
+以繁體中文輸出。技術名詞(TC4, ASIL, Ethernet, AUTOSAR, gateway, MCU, zonal, OEM…)保留英文原文,不要硬翻。
+(網路搜尋的 query 字串可保留英文,不需翻譯;上面的中文規則只適用於你給人看的推理文字。)

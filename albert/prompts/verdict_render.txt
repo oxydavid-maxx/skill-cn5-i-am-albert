@@ -3,3 +3,4 @@ risks, and decision gate, choose exactly one verdict_standalone (可推進 / 要
 產品定義不完整), a light (green/yellow/red), and readiness_score_delta in [-2, 2]. An answer with
 unresolved dangerous ambiguities, high premature_end_risk, or customer-only residual evidence
 cannot be green. Emit StructuredOutput.
+以繁體中文輸出。技術名詞(TC4, ASIL, Ethernet, AUTOSAR, gateway, MCU, zonal, OEM…)保留英文原文,不要硬翻。

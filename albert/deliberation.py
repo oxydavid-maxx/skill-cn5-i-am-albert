@@ -34,7 +34,12 @@ def init(run_dir) -> None:
 
 
 def block(phase: str, title: str, body: str) -> None:
-    """Append a markdown section to deliberation.md AND stream it to stderr live."""
+    """Emit the body markdown-free to deliberation.md AND stream it to stderr live.
+
+    The body self-headers (render_* compose their own card/banner layout), so no
+    ``##``/``━━━ title`` wrapper is added here; ``title`` is retained in the
+    signature for call-site compatibility but is no longer used for formatting.
+    """
     md = f"\n{body}\n"
     if _path is not None:
         try:

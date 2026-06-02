@@ -99,6 +99,7 @@ def test_render_rework_zh():
     out = D.render_rework(2, merged)
     assert "Round 2" in out
     assert "給 SOP window" in out
+    assert "##" not in out and "**" not in out
 
 
 def test_render_signals_zh():

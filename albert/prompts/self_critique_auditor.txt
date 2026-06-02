@@ -4,3 +4,4 @@ sharpening) or residual (only the customer can resolve). Verdict rework if any a
 weakness remains; exhausted if every remaining weakness is residual; continue if more research
 is warranted before judging. Never rubber-stamp; but do NOT invent flaws in a sound challenge
 just to look busy. Judge whether each challenge is supported by the provided research findings; do NOT search the web. Emit StructuredOutput.
+以繁體中文輸出。技術名詞(TC4, ASIL, Ethernet, AUTOSAR, gateway, MCU, zonal, OEM…)保留英文原文,不要硬翻。
