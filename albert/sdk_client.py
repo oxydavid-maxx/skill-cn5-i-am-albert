@@ -50,6 +50,12 @@ _SDK_ENV: dict[str, str] = {
 # Anthropic fast-mode beta header (speed="fast" + this beta per the API spec).
 FAST_MODE_BETA = "fast-mode-2026-02-01"
 
+# Anthropic prompt-caching beta header (per the API spec). On an API-key
+# transport this opts the request into explicit prompt caching; on the OAuth
+# CLI transport the POC found this beta is IGNORED ("Custom betas are only
+# available for API key users") AND caching is applied automatically anyway.
+PROMPT_CACHE_BETA = "prompt-caching-2024-07-31"
+
 
 def _fast_mode_enabled() -> bool:
     """Whether fast-mode wiring should be added to built SDK options.
@@ -74,6 +80,39 @@ def _apply_fast_mode(opts: dict[str, Any]) -> None:
     """
     if _fast_mode_enabled():
         opts["betas"] = [FAST_MODE_BETA]
+
+
+def _prompt_cache_enabled() -> bool:
+    """Whether explicit prompt-cache wiring should be added to built SDK options.
+
+    Gated on env ALBERT_PROMPT_CACHE. DEFAULT "0" (off).
+
+    POC finding (poc/prompt_cache_probe.py): prompt caching is ALREADY engaged
+    automatically on this OAuth CLI/subscription — the control variant (no
+    wiring) showed cache_creation_input_tokens then cache_read_input_tokens > 0
+    on the repeat call. The explicit prompt-caching beta header is IGNORED for
+    non-API-key (OAuth) users ("Custom betas are only available for API key
+    users"), so wiring it changes nothing here. The wiring is kept env-gated +
+    default-OFF so that on an API-key transport (where the beta is honoured) it
+    engages with no code change; on OAuth it is a harmless no-op either way.
+    """
+    return os.environ.get("ALBERT_PROMPT_CACHE", "0") == "1"
+
+
+def _apply_prompt_cache(opts: dict[str, Any]) -> None:
+    """When prompt caching is enabled, attach the prompt-caching beta header.
+
+    This is the most-plausible directive the SDK surface exposes
+    (ClaudeAgentOptions.system_prompt is a plain string with no per-block
+    cache_control). On API-key transports the beta opts the request into
+    explicit caching; on OAuth the CLI ignores it (and caches automatically).
+    Merges with any betas already set (e.g. fast mode) instead of clobbering.
+    """
+    if _prompt_cache_enabled():
+        existing = list(opts.get("betas") or [])
+        if PROMPT_CACHE_BETA not in existing:
+            existing.append(PROMPT_CACHE_BETA)
+        opts["betas"] = existing
 
 # Process-level latch: once a tool-enabled call proves tools cannot run in this
 # runtime, later calls skip the (failing, slow) tool attempt and go straight to
@@ -160,6 +199,7 @@ async def _sdk_query(
     if schema is not None:
         opts_kwargs["output_format"] = {"type": "json_schema", "schema": schema}
     _apply_fast_mode(opts_kwargs)
+    _apply_prompt_cache(opts_kwargs)
 
     options = ClaudeAgentOptions(**opts_kwargs)
 
@@ -436,6 +476,7 @@ class ClaudeSession:
         if self._schema is not None:
             opts["output_format"] = {"type": "json_schema", "schema": self._schema}
         _apply_fast_mode(opts)
+        _apply_prompt_cache(opts)
         return ClaudeAgentOptions(**opts)
 
     def _connect(self) -> None:
