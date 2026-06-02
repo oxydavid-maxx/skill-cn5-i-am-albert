@@ -32,6 +32,7 @@ def _wrap(name, fn):
     @wraps(fn)
     def w(state):
         from albert import progress as _p
+        from albert import deliberation as _d
         from albert.stage_summary import emit_phase_error, emit_phase_start_summary, emit_stage_summary
         emit_phase_start_summary(name, state)
         _p.phase_start(name, {"state_keys": list(state.keys())[:20]})
@@ -39,6 +40,7 @@ def _wrap(name, fn):
             result = fn(state)
             if not isinstance(result, dict):
                 raise TypeError(f"{name} must return dict, got {type(result).__name__}")
+            _d.assert_emitted(name)  # hard requirement: silent deliberation fails the run
             merged = dict(state); merged.update(result)
             result.update(emit_stage_summary(name, merged))
             _p.phase_end(name, {"ok": True})

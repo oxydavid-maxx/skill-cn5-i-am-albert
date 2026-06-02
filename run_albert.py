@@ -1,7 +1,8 @@
 """CLI entry point for the Albert Thought Agent FSM."""
-import argparse, shutil, sys, time, uuid
+import argparse, os, shutil, sys, time, uuid
 from pathlib import Path
 from langgraph.checkpoint.sqlite import SqliteSaver
+from albert import deliberation
 from albert.graph import build_graph
 from albert.input_adapter import build_input
 
@@ -10,6 +11,12 @@ RETENTION_DAYS = 30
 
 
 def main():
+    os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
     ap = argparse.ArgumentParser(prog="run_albert")
     ap.add_argument("proposal", nargs="?")
     ap.add_argument("--input", dest="input_json")
@@ -30,6 +37,7 @@ def main():
         print(f"Would invoke Albert with run_id={run_id}"); return 0
     from albert import progress as _p
     _p.init(run_dir)
+    deliberation.init(run_dir)
     try:
         from albert import heartbeat as _hb
         _hb.start(run_dir, run_id)
