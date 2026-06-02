@@ -575,13 +575,13 @@ def _degraded_websearch(query_text: str, reason: str) -> dict:
 def _websearch_max_turns() -> int:
     """Max agent turns for a single websearch (env ALBERT_WEBSEARCH_MAX_TURNS).
 
-    Default 3 (down from 5) to cut the per-search wall-clock floor. Clamped to
+    Default 2 (down from 3) to cut the per-search wall-clock floor. Clamped to
     >=1; a non-integer value falls back to the default.
     """
     try:
-        return max(1, int(os.environ.get("ALBERT_WEBSEARCH_MAX_TURNS", "3")))
+        return max(1, int(os.environ.get("ALBERT_WEBSEARCH_MAX_TURNS", "2")))
     except (TypeError, ValueError):
-        return 3
+        return 2
 
 
 # Two attempts only: web search is OPTIONAL augmentation (phase_0). When the
