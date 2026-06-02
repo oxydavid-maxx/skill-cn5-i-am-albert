@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Sync this skill's committed HEAD into the CN5DD2_common Gerrit repo
 # (canonical files under skills/skill-cn5-i-am-albert/ + the cn5dd2-base
-# plugin symlink) and push a Gerrit review (refs/for/master).
+# plugin symlink) and push DIRECTLY to master (refs/heads/master).
+# Per user 2026-06-02: "直接 push, 不要 submit" — land on master, no review.
 #
 # Invoked automatically by .git/hooks/pre-push (best-effort: a failure here
 # never blocks the GitHub push). Can also be run manually:  bash tools/sync-to-gerrit.sh
@@ -48,5 +49,7 @@ fi
 
 SHA=$(git -C "$SKILL_DIR" rev-parse --short HEAD)
 git -c commit.gpgsign=false commit -q -m "chore(cn5dd2-base): sync $NAME @ $SHA"
-git push origin HEAD:refs/for/master
-echo "[sync] synced $NAME @ $SHA → Gerrit refs/for/master"
+# Direct push to master (FF base ensured above) — no Gerrit review, per user pref.
+git push --dry-run origin HEAD:refs/heads/master >/dev/null 2>&1 || { echo "[sync] dry-run rejected for refs/heads/master — aborting." >&2; exit 1; }
+git push origin HEAD:refs/heads/master
+echo "[sync] synced $NAME @ $SHA → Gerrit master (direct)"
