@@ -4,7 +4,10 @@ import albert.sdk_client as sc
 
 def test_default_max_turns(monkeypatch):
     monkeypatch.delenv("ALBERT_WEBSEARCH_MAX_TURNS", raising=False)
-    assert sc._websearch_max_turns() == 2
+    # 5 is the original known-good value; with 2 the WebSearch tool_use cycle
+    # (model -> WebSearch tool_use -> tool_result -> summarize) runs out of turns
+    # and the claude subprocess exits code 1.
+    assert sc._websearch_max_turns() == 5
 
 
 def test_env_override(monkeypatch):
@@ -14,7 +17,7 @@ def test_env_override(monkeypatch):
 
 def test_bad_value_falls_back(monkeypatch):
     monkeypatch.setenv("ALBERT_WEBSEARCH_MAX_TURNS", "xx")
-    assert sc._websearch_max_turns() == 2
+    assert sc._websearch_max_turns() == 5
 
 
 def test_clamps_to_at_least_one(monkeypatch):

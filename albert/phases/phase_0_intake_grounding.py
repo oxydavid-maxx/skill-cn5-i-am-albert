@@ -51,12 +51,14 @@ def phase_0_intake_grounding(state: dict) -> dict:
                                json_schema=schemas.SEARCH_REFLECTION, purpose="search_reflection")
             research.extend(parallel_map(websearch, (meta.get("wave2_queries") or [])[:4]))
         else:
-            # Default path: ALL queries (object- + meta-level) in ONE concurrent wave.
-            # max_workers >= len(queries) (and >= 6) so every search starts together;
-            # the wave's wall-clock is bounded by the slowest single search, not the count.
+            # Default path: ALL queries (object- + meta-level) run concurrently,
+            # but bounded to 3 at a time. Each websearch spawns its own `claude`
+            # subprocess; >3 simultaneous inits triggers "Control request timeout:
+            # initialize" under load, which fails the whole wave and leaves the
+            # review UNGROUNDED. 3-at-a-time keeps searches concurrent without the
+            # init-timeout.
             queries = (plan.get("queries") or [])[:8]
-            research.extend(parallel_map(websearch, queries,
-                                         max_workers=max(6, len(queries))))
+            research.extend(parallel_map(websearch, queries, max_workers=3))
             # Meta framing comes from the intake plan, not a separate reflection call.
             mq = plan.get("meta_question")
             meta = {"higher_level_question": mq} if mq else {}

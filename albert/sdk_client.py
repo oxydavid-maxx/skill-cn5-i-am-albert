@@ -575,13 +575,17 @@ def _degraded_websearch(query_text: str, reason: str) -> dict:
 def _websearch_max_turns() -> int:
     """Max agent turns for a single websearch (env ALBERT_WEBSEARCH_MAX_TURNS).
 
-    Default 2 (down from 3) to cut the per-search wall-clock floor. Clamped to
-    >=1; a non-integer value falls back to the default.
+    Default 5 (the original known-good value). The WebSearch tool-use cycle
+    (model -> WebSearch tool_use -> tool_result -> summarize) needs more than 2
+    turns; with 2 the `claude` subprocess runs out of turns and exits code 1,
+    leaving every review UNGROUNDED. Reliability of search outweighs the marginal
+    latency of allowing more turns. Clamped to >=1; a non-integer value falls
+    back to the default.
     """
     try:
-        return max(1, int(os.environ.get("ALBERT_WEBSEARCH_MAX_TURNS", "2")))
+        return max(1, int(os.environ.get("ALBERT_WEBSEARCH_MAX_TURNS", "5")))
     except (TypeError, ValueError):
-        return 2
+        return 5
 
 
 # Two attempts only: web search is OPTIONAL augmentation (phase_0). When the

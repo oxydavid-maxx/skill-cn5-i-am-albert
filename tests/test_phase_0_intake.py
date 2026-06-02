@@ -32,8 +32,9 @@ def test_phase_0_single_wave_default(monkeypatch):
     assert "search_reflection" not in purposes
     # All queries searched in a single concurrent wave; ordering preserved.
     assert [r["query"] for r in out["research"]] == ["q1", "q2", "q3"]
-    # max_workers covers all queries so the wave starts together (>= len, >= 6).
-    assert workers_seen["mw"] >= 6 and workers_seen["mw"] >= 3
+    # Concurrency is capped at 3 to avoid spawning too many `claude` subprocesses
+    # at once (>3 simultaneous inits triggers "Control request timeout: initialize").
+    assert workers_seen["mw"] <= 3
     # meta_question populated from the intake plan's meta framing.
     assert out["meta_question"]["higher_level_question"] == "what would a mature SOTA product do"
     assert out["phase_0_complete"] and out["current_answer"]
