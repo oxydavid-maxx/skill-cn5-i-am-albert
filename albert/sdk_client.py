@@ -631,7 +631,20 @@ def websearch(query_text: str, max_tokens: int = 4000) -> dict:
     proves web search is unavailable in this runtime, a process-wide latch makes
     every later query degrade immediately (no SDK call, no retry) so the screen
     isn't flooded and the run isn't stalled on doomed searches.
+
+    Pluggable backend (C8): when ALBERT_SEARCH_BACKEND selects a fast HTTP
+    backend (tavily/brave), dispatch there before the agentic path. Those
+    backends return the same {query, results, timestamp[, error]} shape and
+    never raise (missing key / HTTP error → error-tagged result), so phases are
+    unchanged. Default ("agentic") keeps the existing implementation below.
     """
+    from albert import search_backends as _sb
+    backend = _sb.selected_backend()
+    if backend == "tavily":
+        return _sb.tavily_search(query_text)
+    if backend == "brave":
+        return _sb.brave_search(query_text)
+
     global _WEBSEARCH_UNAVAILABLE
     _emit("websearch", "search_start", {"query": query_text[:80]})
 
