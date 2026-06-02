@@ -29,3 +29,16 @@ weak_points, premature_end_risk / research_drift_risk (rule-grounded), recommend
 (COS Decision enum), rationale, degraded. Mapping in `docs/albert-cockpit-mapping.md`;
 `albert/cockpit_contract.py` + `tests/test_cockpit_contract.py` prove the seam (R17). Do not change
 the schemas without re-running that test + the cockpit's integration test.
+
+## Deliberation stream (always on)
+
+Every run streams Albert's full reasoning chain live to the terminal and to
+`runs/<run_id>/deliberation.md`: the research grounding, the generated challenges +
+3 dangerous ambiguities, the **3-vote self-critique debate** with the ≥2-of-3
+convergence ruling, any rework rounds, the signals/risk reasoning, and the final
+verdict. Emission is **hard-required** — a soul phase that produces output without
+emitting its deliberation block fails the run (`VisibilityContractError`).
+
+Run **foreground, no `tee`, no redirect** so the transcript streams as it is produced:
+
+    py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py "<proposal>"
