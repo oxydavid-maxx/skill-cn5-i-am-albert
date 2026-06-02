@@ -8,7 +8,8 @@ from albert.models import model_for_role
 from albert.utils import load_prompt
 from albert import schemas
 from albert.signals import (premature_end_level, drift_level, rank_next_probe,
-                            build_risk, enforce_action_consistency)
+                            build_risk, enforce_action_consistency,
+                            premature_end_why, drift_why)
 from albert import deliberation
 
 _STUB = {"premature_end_atoms": {"open_high_impact_challenges": 1, "new_info_rate": "unknown",
@@ -41,8 +42,8 @@ def phase_4_signals_action_gate(state: dict) -> dict:
     pe_atoms = res.get("premature_end_atoms") or _STUB["premature_end_atoms"]
     dr_atoms = res.get("drift_atoms") or {}
     pe_level, dr_level = premature_end_level(pe_atoms), drift_level(dr_atoms)
-    state["premature_end_risk"] = build_risk(pe_level, pe_atoms, rs)
-    state["research_drift_risk"] = build_risk(dr_level, dr_atoms, rs)
+    state["premature_end_risk"] = build_risk(pe_level, pe_atoms, rs, why=premature_end_why(pe_atoms))
+    state["research_drift_risk"] = build_risk(dr_level, dr_atoms, rs, why=drift_why(dr_atoms))
     state["recommended_next_probe"] = rank_next_probe(res.get("recommended_next_probe") or [])
     state["missing_evidence"] = res.get("missing_evidence") or []
     state["questions_albert_would_ask"] = res.get("questions_albert_would_ask") or []
