@@ -4,7 +4,7 @@ import sys
 from albert.errors import VisibilityContractError
 from albert.sdk_client import call_claude
 from albert.models import model_for_role
-from albert.utils import load_prompt
+from albert.utils import load_prompt, research_refs
 from albert import schemas
 from albert import deliberation
 
@@ -43,7 +43,8 @@ def phase_2_challenge_generation(state: dict) -> dict:
            f"Meta-question: {meta.get('higher_level_question','')}\n\n"
            f"Skeptic already raised:\n{_lines(state.get('skeptic_output'))}\n\n"
            f"Source Critic already raised:\n{_lines(state.get('source_critic_output'))}\n\n"
-           f"Research:\n{_lines([r.get('results') for r in state.get('research', [])], 3)}\n")
+           f"Research (cite these ids in each challenge's evidence_refs):\n"
+           f"{research_refs(state.get('research', []))}\n")
     status = "passed"
     try:
         res = call_claude(model=model_for_role("challenge_generation"),

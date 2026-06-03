@@ -102,9 +102,12 @@ def render_challenges(state: dict, round_label: str = "") -> str:
     for i, c in enumerate(chs, 1):
         meta = (f"骨#{c.get('bone', '?')} · 嚴重度:{L.sev_zh(c.get('severity'))}"
                 f" · 現答:{L.strength_zh(c.get('current_answer_strength'))}")
-        out.append(L.card(i, len(chs), meta,
-                          [f"拷問:{c.get('challenge', '')}",
-                           f"為何問:{c.get('why_albert_would_ask', '')}"]))
+        lines = [f"拷問:{c.get('challenge', '')}",
+                 f"為何問:{c.get('why_albert_would_ask', '')}"]
+        refs = c.get("evidence_refs") or []
+        if refs:
+            lines.append(f"證據:{', '.join(str(r) for r in refs)}")
+        out.append(L.card(i, len(chs), meta, lines))
     return "\n".join(out)
 
 

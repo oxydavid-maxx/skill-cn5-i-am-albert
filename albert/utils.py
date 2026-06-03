@@ -29,3 +29,14 @@ def safe_read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except Exception:
         return ""
+
+
+def research_refs(research, limit: int = 8, snip: int = 180) -> str:
+    """Enumerate research findings as stable [Rk] refs the LLM can cite in
+    evidence_refs and the self-critique can verify against."""
+    lines = []
+    for i, r in enumerate((research or [])[:limit], 1):
+        q = str(r.get("query", "")).strip()
+        res = " ".join(str(r.get("results", "")).split())[:snip]
+        lines.append(f"[R{i}] {q} → {res}")
+    return "\n".join(lines)

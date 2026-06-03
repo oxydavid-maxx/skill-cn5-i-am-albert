@@ -12,7 +12,7 @@ from albert.errors import VisibilityContractError
 from albert.sdk_client import call_claude
 from albert.parallel import parallel_run
 from albert.models import model_for_role
-from albert.utils import load_prompt
+from albert.utils import load_prompt, research_refs
 from albert import schemas
 from albert import deliberation
 
@@ -84,7 +84,7 @@ def phase_3_self_critique_audit(state: dict) -> dict:
     # Build a digest of the research already gathered ONCE; each vote judges
     # 'research-backed' against this instead of re-searching the web.
     research = state.get("research") or []
-    digest = "\n".join(f"- {r.get('query','')}: {str(r.get('results',''))[:300]}" for r in research[:6])
+    digest = research_refs(research, limit=8, snip=300)
 
     # The 3 votes are independent -> fan out as parallel stateless calls.
     # VisibilityContractError from any vote propagates through parallel_run.result()

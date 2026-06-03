@@ -13,4 +13,5 @@ must be soul-grade and research-backed. Do NOT pad to a fixed count.
 Keep meeting_ready_response and recommended_probe to ONE sentence each, and evidence_refs to at
 most 2. The challenge, why_albert_would_ask, status, severity, current_answer_strength, and
 missing_info stay full — only trim the supporting prose. Emit StructuredOutput.
+For each challenge, set evidence_refs to the [Rk] id(s) from the Research section that ground or directly relate to it (at most 2; cite the id only, e.g. "R1"; leave empty if none genuinely apply — do NOT invent a citation).
 以繁體中文輸出。技術名詞(TC4, ASIL, Ethernet, AUTOSAR, gateway, MCU, zonal, OEM…)保留英文原文,不要硬翻。
