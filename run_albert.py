@@ -17,13 +17,25 @@ def _apply_standalone_rework_default(mode, env):
         env["ALBERT_MAX_REWORK"] = "1"
 
 
+def _force_utf8_console(streams):
+    """Make CJK deliberation cards render cleanly + live on any machine, no env setup.
+    errors='replace' so a console that can't encode a glyph degrades it to '?' rather
+    than raising UnicodeEncodeError (which would fail the visibility contract)."""
+    for s in streams:
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+        except Exception:
+            pass
+
+
+def _deliberation_banner(run_dir) -> str:
+    return ("\n▼▼▼ 辯論過程(即時顯示)▼▼▼\n"
+            f"（完整存檔:{Path(run_dir) / 'deliberation.md'}）\n")
+
+
 def main():
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
-    try:
-        sys.stdout.reconfigure(line_buffering=True)
-        sys.stderr.reconfigure(line_buffering=True)
-    except Exception:
-        pass
+    _force_utf8_console((sys.stdout, sys.stderr))
     ap = argparse.ArgumentParser(prog="run_albert")
     ap.add_argument("proposal", nargs="?")
     ap.add_argument("--input", dest="input_json")
@@ -45,6 +57,8 @@ def main():
     from albert import progress as _p
     _p.init(run_dir)
     deliberation.init(run_dir)
+    sys.stderr.write(_deliberation_banner(run_dir))
+    sys.stderr.flush()
     try:
         from albert import heartbeat as _hb
         _hb.start(run_dir, run_id)
@@ -73,6 +87,8 @@ def main():
                          f"premature_end={final.get('premature_end_risk',{}).get('level')} "
                          f"standalone={final.get('verdict_standalone')}({final.get('light')})\n")
         print(final.get("report_path", ""))
+    print(f"\n📄 報告:{final.get('report_path', run_dir / 'albert_review.md')}")
+    print(f"💬 辯論全文:{run_dir / 'deliberation.md'}")
     return 0
 
 
