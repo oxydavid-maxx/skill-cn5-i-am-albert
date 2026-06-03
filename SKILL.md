@@ -73,3 +73,14 @@ Fast 是**保研究型**:研究廣度不變(一樣全部查詢、3 票自我辯�
 `ALBERT_RESEARCH_WIDTH=5`)。目標 ≈ 一半時間、~90% 品質。也可用 `ALBERT_PROFILE=fast`。
 明確設過的環境變數一律優先(profile 只設預設值);cockpit 模式也能加 `--fast`。
 實測比較見 `docs/speedup-results.md`。
+
+## Quick mode(`--quick`)
+
+最趕時間用 quick(目標 ~5 分鐘、品質 ~80 分):
+
+    py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py "<你的提案>" --quick
+
+Quick **刻意砍品質換速度**:研究只查 3 條、**跳過多票自我辯論與重做**,把「拷問 + inline
+自我檢查 + 裁決」併成一次 Opus 呼叫(`p0 → quick → 裁決`)。會少了 thorough/fast 的多票辯論
+深度,適合快速一瞥,不適合正式決策。要完整審查用預設 thorough,要兼顧速度與品質用 `--fast`。
+也可用 `ALBERT_PROFILE=quick`;`--quick` 與 `--fast` 同時給時 quick 優先。

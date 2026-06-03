@@ -7,9 +7,7 @@ from albert.sdk_client import call_claude
 from albert.models import model_for_role
 from albert.utils import load_prompt
 from albert import schemas
-from albert.signals import (premature_end_level, drift_level, rank_next_probe,
-                            build_risk, enforce_action_consistency,
-                            premature_end_why, drift_why)
+from albert.signals_apply import apply_signals
 from albert import deliberation
 
 _STUB = {"premature_end_atoms": {"open_high_impact_challenges": 1, "new_info_rate": "unknown",
@@ -39,7 +37,6 @@ def phase_4_signals_action_gate(state: dict) -> dict:
         sys.stderr.write(f"[WARN] phase_4 failed: {type(e).__name__}: {str(e)[:200]}; stub\n")
         res, status = dict(_STUB), "failed"
 
-    from albert.signals_apply import apply_signals
     apply_signals(state, res)
     state["phase_4_status"], state["phase_4_complete"] = status, True
     deliberation.block("phase_4_signals_action_gate", "Phase 4 — Signals & action gate",
