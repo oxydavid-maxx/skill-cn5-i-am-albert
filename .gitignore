@@ -3,4 +3,5 @@ __pycache__/
 runs/
 .pytest_cache/
 .env
-albert_input.json   # leftover sample cockpit-input artifact (not skill source)
+# leftover sample cockpit-input artifact (not skill source)
+albert_input.json
