@@ -60,3 +60,16 @@ def test_apply_quick_respects_explicit():
     env = {"ALBERT_RESEARCH_MAX_QUERIES": "8"}
     apply_profile("quick", env)
     assert env["ALBERT_RESEARCH_MAX_QUERIES"] == "8"
+
+
+def test_resolve_flash():
+    from albert.profile import resolve_profile
+    assert resolve_profile(False, {"ALBERT_PROFILE": "flash"}) == "flash"
+
+
+def test_apply_flash_sets_maxrework():
+    from albert.profile import apply_profile, FLASH_DEFAULTS
+    env = {}
+    apply_profile("flash", env)
+    assert env["ALBERT_MAX_REWORK"] == "0"
+    assert "ALBERT_MAX_REWORK" in FLASH_DEFAULTS

@@ -21,7 +21,9 @@ QUICK_DEFAULTS = {
     "ALBERT_RESEARCH_MAX_QUERIES": "3",
 }
 
-_PROFILE_DEFAULTS = {"fast": FAST_DEFAULTS, "quick": QUICK_DEFAULTS}
+FLASH_DEFAULTS = {"ALBERT_MAX_REWORK": "0"}
+
+_PROFILE_DEFAULTS = {"fast": FAST_DEFAULTS, "quick": QUICK_DEFAULTS, "flash": FLASH_DEFAULTS}
 
 
 def resolve_profile(args_fast: bool, env) -> str:
