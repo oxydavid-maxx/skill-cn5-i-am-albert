@@ -124,3 +124,30 @@ def test_render_verdict_zh():
     assert "準備度變化:1" in out
     assert "方向對但證據不足" in out
     assert "##" not in out and "**" not in out
+
+
+def test_render_challenges_header_suppressed():
+    state = {"top_ambiguities": [], "albert_challenges": [
+        {"bone": 2, "challenge": "c", "why_albert_would_ask": "w", "severity": "high",
+         "current_answer_strength": "weak"}]}
+    out = D.render_challenges(state, header=False)
+    assert "PHASE 2" not in out
+    assert "═" not in out
+    assert "拷問" in out          # body still present
+
+
+def test_render_signals_header_suppressed():
+    merged = {"premature_end_risk": {"level": "low", "why": "x"},
+              "research_drift_risk": {"level": "low", "why": "y"},
+              "proposed_next_action": "synthesize", "recommended_next_action": "synthesize"}
+    out = D.render_signals(merged, header=False)
+    assert "PHASE 4" not in out
+    assert "提前結束風險" in out
+
+
+def test_render_verdict_header_suppressed():
+    final = {"verdict_standalone": "要補證據", "light": "red", "readiness_score_delta": 0,
+             "recommended_next_action": "pull_human", "reproducible_judgment": "j"}
+    out = D.render_verdict(final, header=False)
+    assert "PHASE 5" not in out
+    assert "判定" in out

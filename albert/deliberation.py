@@ -87,9 +87,9 @@ def render_research(state: dict) -> str:
     return "\n".join(out)
 
 
-def render_challenges(state: dict, round_label: str = "") -> str:
+def render_challenges(state: dict, round_label: str = "", header: bool = True) -> str:
     title = "PHASE 2 ─ 生成拷問" + (f"({round_label})" if round_label else "")
-    out = [L.header(title)]
+    out = [L.header(title)] if header else []
     ambs = state.get("top_ambiguities") or []
     if ambs:
         out.append(L.section("先釘死最危險的模糊詞"))
@@ -147,24 +147,24 @@ def render_rework(round_n: int, merged: list) -> str:
     return "\n".join(out)
 
 
-def render_signals(merged: dict) -> str:
+def render_signals(merged: dict, header: bool = True) -> str:
     pe = merged.get("premature_end_risk") or {}
     dr = merged.get("research_drift_risk") or {}
     final = merged.get("recommended_next_action", merged.get("proposed_next_action", "?"))
-    return "\n".join([
-        L.header("PHASE 4 ─ Signals & 行動閘"),
+    out = ([L.header("PHASE 4 ─ Signals & 行動閘")] if header else []) + [
         L.kv("提前結束風險", f"{L.sev_zh(pe.get('level'))} — {pe.get('why', '')}"),
         L.kv("研究偏移風險", f"{L.sev_zh(dr.get('level'))} — {dr.get('why', '')}"),
         L.kv("建議行動", f"{merged.get('proposed_next_action', '?')} → 經訊號否決後:{final}"),
-    ])
+    ]
+    return "\n".join(out)
 
 
-def render_verdict(final: dict) -> str:
+def render_verdict(final: dict, header: bool = True) -> str:
     emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴"}.get(final.get("light", ""), "")
-    return "\n".join([
-        L.header("PHASE 5 ─ 裁決"),
+    out = ([L.header("PHASE 5 ─ 裁決")] if header else []) + [
         L.kv("判定", f"{final.get('verdict_standalone', '?')} {emoji}"),
         L.kv("準備度變化", str(final.get("readiness_score_delta", "?"))),
         L.kv("建議下一步", str(final.get("recommended_next_action", "?"))),
         L.kv("一句話判斷", str(final.get("reproducible_judgment", ""))),
-    ])
+    ]
+    return "\n".join(out)

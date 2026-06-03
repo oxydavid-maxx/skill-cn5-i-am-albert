@@ -6,6 +6,7 @@ from albert.sdk_client import call_claude
 from albert.models import model_for_role
 from albert.utils import load_prompt, research_refs
 from albert import schemas, deliberation
+from albert import delib_layout as L
 from albert.signals_apply import apply_signals
 
 _STUB = {"albert_challenges": [{"challenge": "(LLM unavailable — re-run Albert)",
@@ -47,17 +48,18 @@ def phase_quick_combined(state: dict) -> dict:
     state["verdict"] = "exhausted"
     state["phase_2_status"] = status
     state["phase_4_status"], state["phase_4_complete"] = status, True
-    body = (deliberation.render_challenges(state)
+    body = (L.header("PHASE Q ─ 快速審查(quick)")
+            + "\n" + deliberation.render_challenges(state, header=False)
             + "\n\n(quick 模式:單次審查 + inline 自我檢查,無多票辯論)\n\n"
             + deliberation.render_signals({
                 "premature_end_risk": state["premature_end_risk"],
                 "research_drift_risk": state["research_drift_risk"],
                 "proposed_next_action": res.get("proposed_next_action", "?"),
-                "recommended_next_action": state["recommended_next_action"]})
+                "recommended_next_action": state["recommended_next_action"]}, header=False)
             + "\n\n" + deliberation.render_verdict({
                 "verdict_standalone": state["verdict_standalone"], "light": state["light"],
                 "readiness_score_delta": state["readiness_score_delta"],
                 "recommended_next_action": state["recommended_next_action"],
-                "reproducible_judgment": state["reproducible_judgment"]}))
+                "reproducible_judgment": state["reproducible_judgment"]}, header=False))
     deliberation.block("phase_quick_combined", "PHASE Q ─ 快速審查(quick)", body)
     return state
