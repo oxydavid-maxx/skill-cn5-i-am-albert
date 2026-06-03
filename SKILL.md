@@ -84,3 +84,15 @@ Quick **刻意砍品質換速度**:研究只查 3 條、**跳過多票自我辯�
 自我檢查 + 裁決」併成一次 Opus 呼叫(`p0 → quick → 裁決`)。會少了 thorough/fast 的多票辯論
 深度,適合快速一瞥,不適合正式決策。要完整審查用預設 thorough,要兼顧速度與品質用 `--fast`。
 也可用 `ALBERT_PROFILE=quick`;`--quick` 與 `--fast` 同時給時 quick 優先。
+
+## Flash mode(`--flash`)
+
+最快:一次 Opus 呼叫、**完全不查研究、跳過所有 phase**(`START → flash → 裁決`):
+
+    py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py "<你的提案>" --flash
+
+這是 Albert 的「一眼直覺判斷」(~1-2 分鐘):沒有研究佐證、沒有辯論,只憑提案本身。最省時、品質最低,
+適合即時 sanity check。prompt 會要 Albert 把「無法佐證的點」列進 missing_evidence,所以缺口看得到。
+正式決策請用 thorough / `--fast`。多個 flag 同時給時優先序:flash > quick > fast。
+
+四個模式一覽:`thorough`(預設,完整辯論)· `--fast`(保研究、~parity)· `--quick`(少研究+單次合併、~80%)· `--flash`(零研究、單次、最快)。
