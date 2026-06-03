@@ -105,9 +105,34 @@ passed because they call the router directly (bypassing the state filter). Fix: 
 filters an initial dict to the schema keys before routing. (Stale `.pyc` masked the fix on two
 re-runs; verified with `PYTHONDONTWRITEBYTECODE=1`.)
 
-**Known cosmetic:** quick's deliberation block reuses `render_challenges`/`render_signals`/
-`render_verdict`, so its body shows "PHASE 2/4/5" sub-headers (harmless; the actual graph node is
-`phase_quick_combined`). A follow-up can pass a header-suppress flag to the renderers.
+**Cosmetic (fixed):** the reused renderers now take `header=False`; quick/flash blocks show one
+profile banner (PHASE Q / PHASE F), not the misleading "PHASE 2/4/5" sub-headers.
 
-**Three profiles shipped:** `thorough` (default, full debate) · `--fast` (~0.77× / parity) ·
-`--quick` (~0.33× / ~80%).
+## Flash mode A/B (2026-06-03) — `--flash` (one call, no research)
+
+`flash` collapses to `START → phase_flash → p5` — ONE Opus call, **zero research, zero debate**.
+Graph nodes executed: `phase_flash`, `phase_5_assemble_render` only (confirmed via progress.jsonl).
+
+| Run | Wall-clock | graph nodes | standalone | light | Δ | #ch | evidence_refs |
+|---|---|---|---|---|---|---|---|
+| thorough | 1081.8s (18.0m) | p0·p2·p3·p4·p5 | 要補證據 | red | −1 | 9 | 8/9 |
+| fast | 834.9s (13.9m) | p0·p2·p3·p4·p5 | 要補證據 | red | −1 | 9 | 8/9 |
+| quick | 358.8s (6.0m) | p0·quick·p5 | (要補級) | yellow | 0 | 6 | 4/6 |
+| **flash** | **247.4s (4.1m)** | **flash·p5** | (要補級) | yellow | 0 | 6 | **0/6 (by design)** |
+| **flash ratio** | **0.23× thorough · 0.30× fast** | | | | | | |
+
+**Time: 4.1 min (fastest), not the 1-2 min I'd estimated.** The single combined call still generates
+a full challenges+signals+verdict payload in 繁中 (~240s of output tokens) — output generation is
+the floor once research is removed, not round-count. evidence_refs are empty by design (no research;
+the prompt enforces it and tells Albert to surface unverified points as missing_evidence).
+
+**Quality = lowest (one-shot judgment).** 6 challenges + verdict, no research grounding, no debate.
+Use for an instant sanity read only.
+
+**Note:** the first flash benchmark run hit a transient Opus API outage ("Fatal error in message
+reader" + retry stall); re-run cleanly once Opus recovered → 247.4s. Routing (flash bypasses p0)
+was confirmed in both attempts.
+
+**Four profiles shipped:** `thorough` (default, full debate, 18m) · `--fast` (research-preserving,
+~0.77×, parity) · `--quick` (minimal research + one combined call, ~0.33×, ~80%) · `--flash`
+(no research, one call, ~0.23×, fastest/lowest). Precedence: flash > quick > fast.
