@@ -51,5 +51,9 @@ Run **foreground, no `tee`, no redirect** so the transcript streams as it is pro
 
 不需要任何環境設定 — 程式會自動用 UTF-8 顯示(Windows 也不會亂碼,也不會因編碼錯誤中斷)。
 跑起來會先印一行「▼▼▼ 辯論過程(即時顯示)▼▼▼」,卡片就在下面一張張出現;每張卡片同時存到
-`runs/<run_id>/deliberation.md`,跑完螢幕也會印出報告與辯論全文的路徑。想看即時就**不要**
-`| tee`、`> file` 或丟背景跑 — 那會把即時畫面導走(完整內容仍在 deliberation.md)。
+`runs/<run_id>/deliberation.md`,跑完螢幕也會印出報告與辯論全文的路徑。
+
+**強制規定:** standalone 模式必須在互動終端機跑。若偵測到輸出被導走(`| tee`、`> 檔案`、
+`2>&1 |`、丟背景),Albert 會**直接拒絕執行(exit 2)**並提示正確跑法 —— 確保辯論一定看得到。
+真的要非互動執行(CI / 自動化)才加 `--allow-redirect`(或 `ALBERT_ALLOW_REDIRECT=1`);
+cockpit 模式(`--input`/`--json-out`)自動豁免。完整內容仍會存到 `runs/<id>/deliberation.md`。
