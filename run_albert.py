@@ -10,6 +10,13 @@ RUNS_DIR = Path(__file__).parent / "runs"
 RETENTION_DAYS = 30
 
 
+def _apply_standalone_rework_default(mode, env):
+    """Standalone runs are interactive — default to one rework pass unless the
+    caller set ALBERT_MAX_REWORK explicitly. Cockpit mode keeps the graph default (2)."""
+    if mode == "standalone" and "ALBERT_MAX_REWORK" not in env:
+        env["ALBERT_MAX_REWORK"] = "1"
+
+
 def main():
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     try:
@@ -50,6 +57,7 @@ def main():
             initial = None
         else:
             ai = build_input(raw_text=args.proposal, input_json=args.input_json)
+            _apply_standalone_rework_default(ai["mode"], os.environ)
             initial = {"albert_input": ai, "mode": ai["mode"], "run_id": run_id,
                        "run_dir": str(run_dir), "user_email": args.user_email}
         try:
