@@ -74,3 +74,40 @@ reworked and added a full phase-2+phase-3 cycle (~4-6 min), where fast would lan
 most — the rework case). If guaranteed half-time on single-pass proposals is required, the next
 lever is either a paid search backend or a separate `--faster` that also trims research breadth
 (explicitly declined for `--fast`, which is research-preserving by design).
+
+## Quick mode A/B (2026-06-03) — `--quick` (~80% quality, target ≤6 min)
+
+Same proposal. `quick` collapses the graph to `p0 → phase_quick_combined → p5` — ONE Opus call
+(challenges + inline self-critique + signals + verdict), **skipping the 3-vote debate (p3) and
+the separate signals round (p4)**. Knobs: MAX_REWORK=0, WEBSEARCH_MAX_TURNS=3, RESEARCH_WIDTH=3,
+RESEARCH_MAX_QUERIES=3.
+
+| Run | Wall-clock | graph nodes | standalone | light | Δ | #challenges | evidence_refs |
+|---|---|---|---|---|---|---|---|
+| thorough | 1081.8s (18.0m) | p0·p2·p3·p4·p5 | 要補證據 | red | −1 | 9 | 8/9 |
+| fast | 834.9s (13.9m) | p0·p2·p3·p4·p5 | 要補證據 | red | −1 | 9 | 8/9 |
+| **quick** | **358.8s (6.0m)** | **p0·quick·p5** | (要補/可推進級) | yellow | 0 | 6 | 4/6 |
+| **quick ratio** | **0.33× thorough · 0.43× fast** | | | | | | |
+
+**Time: hit the ≤6-min target (5.98 min); aim-5 missed.** Breakdown: phase_0 research ~197s
+(the agentic-search floor, even at 3 queries) + the single combined call ~160s + render. To reach
+5 min would need research cut to ~2 queries or a fast search backend key.
+
+**Quality ~80% as designed:** a real audit (6 capped challenges + inline self-critique + verdict),
+but **no multi-vote exhaustion debate, no rework, thinner research** (3 queries) — lighter judgment
+(🟡 vs the thorough/fast 🔴 on this proposal). Fine for a quick look; use thorough for real decisions.
+
+**Bug found & fixed by this benchmark:** the first quick runs silently executed the FULL thorough
+pipeline. Root cause: LangGraph filters state to keys declared in `AlbertState`; `profile` wasn't
+declared, so it was dropped and `_route_after_intake` always fell back to thorough. Unit tests
+passed because they call the router directly (bypassing the state filter). Fix: declare
+`profile` in `AlbertState` + a regression test (`tests/test_quick_route_integration.py`) that
+filters an initial dict to the schema keys before routing. (Stale `.pyc` masked the fix on two
+re-runs; verified with `PYTHONDONTWRITEBYTECODE=1`.)
+
+**Known cosmetic:** quick's deliberation block reuses `render_challenges`/`render_signals`/
+`render_verdict`, so its body shows "PHASE 2/4/5" sub-headers (harmless; the actual graph node is
+`phase_quick_combined`). A follow-up can pass a header-suppress flag to the renderers.
+
+**Three profiles shipped:** `thorough` (default, full debate) · `--fast` (~0.77× / parity) ·
+`--quick` (~0.33× / ~80%).
