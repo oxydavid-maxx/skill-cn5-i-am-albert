@@ -61,3 +61,15 @@ cockpit 模式(`--input`/`--json-out`)自動豁免。完整內容仍會存到 `r
 > 已紅隊測試(2026-06-03):`| tee`、`> 檔案`、`2>&1 |`、`2> err`、背景 `&`、pty 包裝
 > (`script` / `winpty`)全部擋下(exit 2、開跑前攔截、無殘留 run)。偷懶藏不掉辯論;
 > 要繞只剩明知故犯地加 `--allow-redirect`。測試:`tests/test_redirect_refusal.py`。
+
+## Fast mode(`--fast`)
+
+預設是 thorough(完整)模式。趕時間用 fast:
+
+    py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py "<你的提案>" --fast
+
+Fast 是**保研究型**:研究廣度不變(一樣全部查詢、3 票自我辯論、Opus),速度來自
+「不跑 rework 重做 + 搜尋更快更並行」(`ALBERT_MAX_REWORK=0`、`ALBERT_WEBSEARCH_MAX_TURNS=3`、
+`ALBERT_RESEARCH_WIDTH=5`)。目標 ≈ 一半時間、~90% 品質。也可用 `ALBERT_PROFILE=fast`。
+明確設過的環境變數一律優先(profile 只設預設值);cockpit 模式也能加 `--fast`。
+實測比較見 `docs/speedup-results.md`。
