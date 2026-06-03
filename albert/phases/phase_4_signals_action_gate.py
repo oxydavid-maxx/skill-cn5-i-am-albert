@@ -39,29 +39,8 @@ def phase_4_signals_action_gate(state: dict) -> dict:
         sys.stderr.write(f"[WARN] phase_4 failed: {type(e).__name__}: {str(e)[:200]}; stub\n")
         res, status = dict(_STUB), "failed"
 
-    pe_atoms = res.get("premature_end_atoms") or _STUB["premature_end_atoms"]
-    dr_atoms = res.get("drift_atoms") or {}
-    pe_level, dr_level = premature_end_level(pe_atoms), drift_level(dr_atoms)
-    state["premature_end_risk"] = build_risk(pe_level, pe_atoms, rs, why=premature_end_why(pe_atoms))
-    state["research_drift_risk"] = build_risk(dr_level, dr_atoms, rs, why=drift_why(dr_atoms))
-    state["recommended_next_probe"] = rank_next_probe(res.get("recommended_next_probe") or [])
-    state["missing_evidence"] = res.get("missing_evidence") or []
-    state["questions_albert_would_ask"] = res.get("questions_albert_would_ask") or []
-    _proposed = res.get("proposed_next_action", "continue_research")
-    state["recommended_next_action"] = enforce_action_consistency(
-        _proposed, pe_level, dr_level, state["missing_evidence"])
-    state["rationale"] = res.get("rationale") or ""
-    state["decision_gate"] = res.get("decision_gate") or dict(_STUB["decision_gate"])
-    _rj = res.get("reproducible_judgment") or ""
-    if state["recommended_next_action"] != _proposed:
-        _rj = (_rj + f"（註:LLM 原建議 {_proposed},經訊號否決改為 "
-                     f"{state['recommended_next_action']}。）")
-    state["reproducible_judgment"] = _rj
-    # Verdict-presentation fields (formerly phase 5's separate LLM call). Levels
-    # + action still come from signals.py above; these are presentation atoms only.
-    state["verdict_standalone"] = res.get("verdict_standalone", "要補證據")
-    state["light"] = res.get("light", "yellow")
-    state["readiness_score_delta"] = int(res.get("readiness_score_delta", 0))
+    from albert.signals_apply import apply_signals
+    apply_signals(state, res)
     state["phase_4_status"], state["phase_4_complete"] = status, True
     deliberation.block("phase_4_signals_action_gate", "Phase 4 — Signals & action gate",
                        deliberation.render_signals({
