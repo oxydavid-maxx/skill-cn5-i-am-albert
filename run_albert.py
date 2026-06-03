@@ -5,6 +5,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from albert import deliberation
 from albert.graph import build_graph
 from albert.input_adapter import build_input
+from albert.profile import resolve_profile, apply_profile
 
 RUNS_DIR = Path(__file__).parent / "runs"
 RETENTION_DAYS = 30
@@ -28,9 +29,9 @@ def _force_utf8_console(streams):
             pass
 
 
-def _deliberation_banner(run_dir) -> str:
+def _deliberation_banner(run_dir, profile="thorough") -> str:
     return ("\n▼▼▼ 辯論過程(即時顯示)▼▼▼\n"
-            f"（完整存檔:{Path(run_dir) / 'deliberation.md'}）\n")
+            f"（模式:{profile} · 完整存檔:{Path(run_dir) / 'deliberation.md'}）\n")
 
 
 def _isatty(stream) -> bool:
@@ -68,10 +69,15 @@ def main():
     ap.add_argument("--gc", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--allow-redirect", action="store_true")
+    ap.add_argument("--fast", action="store_true")
     ap.add_argument("--user-email")
     args = ap.parse_args()
     if args.gc:
         _gc(); return 0
+    profile = resolve_profile(args.fast, os.environ)
+    _applied = apply_profile(profile, os.environ)
+    if profile == "fast":
+        sys.stderr.write(f"[profile] fast — {', '.join(f'{k}={v}' for k, v in _applied.items()) or '(all pre-set)'}\n")
     if not args.proposal and not args.input_json and not args.resume_id:
         ap.error("a proposal, --input, or --resume is required")
     is_cockpit = bool(args.input_json or args.json_out)
@@ -89,7 +95,7 @@ def main():
     from albert import progress as _p
     _p.init(run_dir)
     deliberation.init(run_dir)
-    sys.stderr.write(_deliberation_banner(run_dir))
+    sys.stderr.write(_deliberation_banner(run_dir, profile))
     sys.stderr.flush()
     try:
         from albert import heartbeat as _hb
