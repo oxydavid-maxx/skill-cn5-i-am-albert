@@ -22,6 +22,7 @@ class AlbertState(TypedDict, total=False):
     # Input (the albert_input contract, normalized)
     albert_input: dict
     mode: Literal["cockpit", "standalone"]
+    profile: Optional[str]  # thorough|fast|quick — drives _route_after_intake; MUST be declared or LangGraph drops it (then quick silently runs thorough)
     current_answer: str
     original_objective: str
     meeting_context: str
