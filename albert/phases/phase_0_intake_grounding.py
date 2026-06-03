@@ -28,6 +28,13 @@ def _research_width() -> int:
         return 3
 
 
+def _research_max_queries() -> int:
+    try:
+        return max(1, int(os.environ.get("ALBERT_RESEARCH_MAX_QUERIES", "8")))
+    except (TypeError, ValueError):
+        return 8
+
+
 _CARRY = ["current_answer", "original_objective", "meeting_context", "output_purpose",
           "issue_map", "challenge_map", "evidence", "skeptic_output", "source_critic_output",
           "readiness_scores", "recent_research_actions", "research_state", "proposal"]
@@ -65,7 +72,7 @@ def phase_0_intake_grounding(state: dict) -> dict:
             # initialize" under load, which fails the whole wave and leaves the
             # review UNGROUNDED. 3-at-a-time keeps searches concurrent without the
             # init-timeout.
-            queries = (plan.get("queries") or [])[:8]
+            queries = (plan.get("queries") or [])[:_research_max_queries()]
             research.extend(parallel_map(websearch, queries, max_workers=_research_width()))
             # Meta framing comes from the intake plan, not a separate reflection call.
             mq = plan.get("meta_question")
