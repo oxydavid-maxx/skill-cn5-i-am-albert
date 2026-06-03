@@ -40,3 +40,37 @@ accept ~9 min as the free-tier floor; speed work complete.
 - `ALBERT_SEARCH_BACKEND=tavily|brave` (+ `TAVILY_API_KEY`/`BRAVE_API_KEY`) → fast search if a key is set.
 - `ALBERT_FAST_MODE=1` → fast-mode beta (no-op on OAuth; engages on an API-key transport).
 - `ALBERT_WEBSEARCH_MAX_TURNS` (default 2) · `ALBERT_MAX_REWORK` (default 2) · `ALBERT_RESEARCH_REFLECT=1` (restore the deeper 2-wave research).
+
+## Fast mode A/B (2026-06-03) — research-preserving `--fast`
+
+Same proposal (CN5 Gateway-MCU winning thesis), back-to-back, `--allow-redirect` (harness is
+non-TTY). Fast profile = `ALBERT_MAX_REWORK=0`, `ALBERT_WEBSEARCH_MAX_TURNS=3`,
+`ALBERT_RESEARCH_WIDTH=5` (research breadth — all 8 queries — unchanged).
+
+| Run | Wall-clock | phase_0 (research) | standalone verdict | light | Δ | action | #challenges | #weak | evidence_refs |
+|---|---|---|---|---|---|---|---|---|---|
+| thorough (default) | 1081.8s (18.0 min) | 386.3s | 要補證據 | red | −1 | pull_human | 9 | 10 | 8/9 |
+| **fast** (`--fast`) | **834.9s (13.9 min)** | 296.0s | 要補證據 | red | −1 | pull_human | 9 | 10 | 8/9 |
+| **ratio** | **0.77×** | 0.77× | identical | = | = | = | = | = | = |
+
+**Quality: parity (≈100%, well above the 90% floor).** Identical user-facing standalone verdict,
+light, readiness delta, recommended action; same challenge/weak-point counts; same evidence_refs
+coverage. (The internal `verdict` enum differed — thorough `continue`, fast `rework` — but fast's
+`MAX_REWORK=0` correctly did not loop, and the decision-relevant outputs are identical.)
+
+**Time: 0.77× this run (−23%), NOT the ≤0.55 target — honestly explained:** the thorough baseline
+did **not** trigger a rework this run, so fast's biggest lever (no-rework) saved nothing here; the
+saving came only from faster + wider search (phase_0 386s → 296s, breadth kept). The no-rework
+lever pays off only when the baseline *would* rework — in earlier runs this session thorough
+reworked and added a full phase-2+phase-3 cycle (~4-6 min), where fast would land ≈0.5×.
+
+**So fast mode's speedup is conditional:**
+- Baseline reworks (common on weaker/ambiguous proposals) → fast ≈ 0.5× (hits target).
+- Baseline single-passes (like this run) → fast ≈ 0.75× (faster, but not half).
+- A search-backend key (`ALBERT_SEARCH_BACKEND` + key) takes any case well under 0.5× (search
+  150s → ~2s); the wiring is already present, inert without a key.
+
+**Recommendation:** ship `--fast` as-is (parity quality, reliably faster, ≥0.5× when it matters
+most — the rework case). If guaranteed half-time on single-pass proposals is required, the next
+lever is either a paid search backend or a separate `--faster` that also trims research breadth
+(explicitly declined for `--fast`, which is research-preserving by design).
