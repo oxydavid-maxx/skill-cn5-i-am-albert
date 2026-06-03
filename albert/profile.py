@@ -14,6 +14,15 @@ FAST_DEFAULTS = {
     "ALBERT_RESEARCH_WIDTH": "5",
 }
 
+QUICK_DEFAULTS = {
+    "ALBERT_MAX_REWORK": "0",
+    "ALBERT_WEBSEARCH_MAX_TURNS": "3",
+    "ALBERT_RESEARCH_WIDTH": "3",
+    "ALBERT_RESEARCH_MAX_QUERIES": "3",
+}
+
+_PROFILE_DEFAULTS = {"fast": FAST_DEFAULTS, "quick": QUICK_DEFAULTS}
+
 
 def resolve_profile(args_fast: bool, env) -> str:
     if args_fast:
@@ -22,12 +31,12 @@ def resolve_profile(args_fast: bool, env) -> str:
 
 
 def apply_profile(profile: str, env) -> dict:
-    """Set fast-mode knob DEFAULTS into env (setdefault semantics). Returns the
-    dict of values actually applied (for logging). Unknown/thorough = no-op."""
+    """Set a profile's knob DEFAULTS into env (setdefault). Explicit env wins.
+    thorough/unknown = no-op. Returns the dict actually applied."""
     applied: dict = {}
-    if profile == "fast":
-        for k, v in FAST_DEFAULTS.items():
-            if k not in env:
-                env[k] = v
-                applied[k] = v
+    defaults = _PROFILE_DEFAULTS.get(profile, {})
+    for k, v in defaults.items():
+        if k not in env:
+            env[k] = v
+            applied[k] = v
     return applied

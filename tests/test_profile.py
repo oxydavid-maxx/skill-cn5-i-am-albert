@@ -35,3 +35,28 @@ def test_apply_thorough_is_noop():
     env = {}
     assert apply_profile("thorough", env) == {}
     assert env == {}
+
+
+from albert.profile import QUICK_DEFAULTS
+
+
+def test_resolve_quick():
+    from albert.profile import resolve_profile
+    assert resolve_profile(False, {"ALBERT_PROFILE": "quick"}) == "quick"
+
+
+def test_apply_quick_sets_defaults():
+    from albert.profile import apply_profile
+    env = {}
+    apply_profile("quick", env)
+    assert env["ALBERT_MAX_REWORK"] == "0"
+    assert env["ALBERT_WEBSEARCH_MAX_TURNS"] == "3"
+    assert env["ALBERT_RESEARCH_WIDTH"] == "3"
+    assert env["ALBERT_RESEARCH_MAX_QUERIES"] == "3"
+
+
+def test_apply_quick_respects_explicit():
+    from albert.profile import apply_profile
+    env = {"ALBERT_RESEARCH_MAX_QUERIES": "8"}
+    apply_profile("quick", env)
+    assert env["ALBERT_RESEARCH_MAX_QUERIES"] == "8"
