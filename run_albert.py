@@ -33,6 +33,30 @@ def _deliberation_banner(run_dir) -> str:
             f"（完整存檔:{Path(run_dir) / 'deliberation.md'}）\n")
 
 
+def _isatty(stream) -> bool:
+    try:
+        return bool(stream.isatty())
+    except Exception:
+        return False
+
+
+def _redirect_refusal(*, is_cockpit, allow_redirect, dry_run, streams):
+    """Return a refusal message if a standalone run's live deliberation would be hidden
+    (output not on an interactive terminal), else None. Cockpit / --allow-redirect /
+    --dry-run are exempt; otherwise ALL streams must be TTYs."""
+    if is_cockpit or allow_redirect or dry_run:
+        return None
+    if all(_isatty(s) for s in streams):
+        return None
+    return (
+        "Albert 拒絕執行:辯論過程必須即時顯示在終端機,但偵測到輸出被導走"
+        "(pipe / > 檔案 / 2>&1 | tee / 背景執行)。\n"
+        "請直接在終端機跑:  py -3 run_albert.py \"<你的提案>\"\n"
+        "(別加 | tee、> 檔案、2>&1 |、或丟背景。完整存檔仍會在 runs/<id>/deliberation.md。)\n"
+        "若確實需要非互動執行,加 --allow-redirect。"
+    )
+
+
 def main():
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     _force_utf8_console((sys.stdout, sys.stderr))
@@ -43,12 +67,20 @@ def main():
     ap.add_argument("--resume", dest="resume_id")
     ap.add_argument("--gc", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--allow-redirect", action="store_true")
     ap.add_argument("--user-email")
     args = ap.parse_args()
     if args.gc:
         _gc(); return 0
     if not args.proposal and not args.input_json and not args.resume_id:
         ap.error("a proposal, --input, or --resume is required")
+    is_cockpit = bool(args.input_json or args.json_out)
+    allow_redirect = bool(args.allow_redirect) or os.environ.get("ALBERT_ALLOW_REDIRECT") == "1"
+    _refusal = _redirect_refusal(is_cockpit=is_cockpit, allow_redirect=allow_redirect,
+                                 dry_run=args.dry_run, streams=(sys.stdout, sys.stderr))
+    if _refusal:
+        sys.stderr.write(_refusal + "\n")
+        return 2
     run_id = args.resume_id or f"run-{int(time.time())}-{uuid.uuid4().hex[:8]}"
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
