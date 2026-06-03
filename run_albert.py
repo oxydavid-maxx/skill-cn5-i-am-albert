@@ -70,14 +70,20 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--allow-redirect", action="store_true")
     ap.add_argument("--fast", action="store_true")
+    ap.add_argument("--quick", action="store_true")
     ap.add_argument("--user-email")
     args = ap.parse_args()
     if args.gc:
         _gc(); return 0
-    profile = resolve_profile(args.fast, os.environ)
+    if args.quick:
+        profile = "quick"
+        if args.fast:
+            sys.stderr.write("[profile] both --quick and --fast given; using quick\n")
+    else:
+        profile = resolve_profile(args.fast, os.environ)
     _applied = apply_profile(profile, os.environ)
-    if profile == "fast":
-        sys.stderr.write(f"[profile] fast — {', '.join(f'{k}={v}' for k, v in _applied.items()) or '(all pre-set)'}\n")
+    if profile in ("fast", "quick"):
+        sys.stderr.write(f"[profile] {profile} — {', '.join(f'{k}={v}' for k, v in _applied.items()) or '(all pre-set)'}\n")
     if not args.proposal and not args.input_json and not args.resume_id:
         ap.error("a proposal, --input, or --resume is required")
     is_cockpit = bool(args.input_json or args.json_out)
@@ -111,7 +117,8 @@ def main():
             ai = build_input(raw_text=args.proposal, input_json=args.input_json)
             _apply_standalone_rework_default(ai["mode"], os.environ)
             initial = {"albert_input": ai, "mode": ai["mode"], "run_id": run_id,
-                       "run_dir": str(run_dir), "user_email": args.user_email}
+                       "run_dir": str(run_dir), "user_email": args.user_email,
+                       "profile": profile}
         try:
             final = graph.invoke(initial, config=config)
         except Exception as exc:

@@ -13,6 +13,7 @@ from albert.phases.phase_2_challenge_generation import phase_2_challenge_generat
 from albert.phases.phase_3_self_critique_audit import phase_3_self_critique_audit
 from albert.phases.phase_4_signals_action_gate import phase_4_signals_action_gate
 from albert.phases.phase_5_assemble_render import phase_5_assemble_render
+from albert.phases.phase_quick_combined import phase_quick_combined
 
 
 def _max_rework() -> int:
@@ -20,6 +21,12 @@ def _max_rework() -> int:
         return max(0, int(os.environ.get("ALBERT_MAX_REWORK", "2")))
     except (TypeError, ValueError):
         return 2
+
+
+def _route_after_intake(state: dict) -> str:
+    if state.get("profile") == "quick":
+        return "phase_quick_combined"
+    return "phase_2_challenge_generation"
 
 
 def _route_after_audit(state: dict) -> str:
@@ -59,10 +66,14 @@ def build_graph(checkpointer=None):
                    ("phase_2_challenge_generation", phase_2_challenge_generation),
                    ("phase_3_self_critique_audit", phase_3_self_critique_audit),
                    ("phase_4_signals_action_gate", phase_4_signals_action_gate),
-                   ("phase_5_assemble_render", phase_5_assemble_render)]:
+                   ("phase_5_assemble_render", phase_5_assemble_render),
+                   ("phase_quick_combined", phase_quick_combined)]:
         g.add_node(nm, _wrap(nm, fn))
     g.add_edge(START, "phase_0_intake_grounding")
-    g.add_edge("phase_0_intake_grounding", "phase_2_challenge_generation")
+    g.add_conditional_edges("phase_0_intake_grounding", _route_after_intake,
+        {"phase_quick_combined": "phase_quick_combined",
+         "phase_2_challenge_generation": "phase_2_challenge_generation"})
+    g.add_edge("phase_quick_combined", "phase_5_assemble_render")
     g.add_edge("phase_2_challenge_generation", "phase_3_self_critique_audit")
     g.add_conditional_edges("phase_3_self_critique_audit", _route_after_audit,
         {"phase_2_challenge_generation": "phase_2_challenge_generation",
