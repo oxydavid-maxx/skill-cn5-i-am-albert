@@ -71,18 +71,22 @@ def main():
     ap.add_argument("--allow-redirect", action="store_true")
     ap.add_argument("--fast", action="store_true")
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--flash", action="store_true")
     ap.add_argument("--user-email")
     args = ap.parse_args()
     if args.gc:
         _gc(); return 0
-    if args.quick:
+    if args.flash:
+        profile = "flash"
+    elif args.quick:
         profile = "quick"
-        if args.fast:
-            sys.stderr.write("[profile] both --quick and --fast given; using quick\n")
     else:
         profile = resolve_profile(args.fast, os.environ)
+    _extra = [n for n, on in (("--flash", args.flash), ("--quick", args.quick), ("--fast", args.fast)) if on]
+    if len(_extra) > 1:
+        sys.stderr.write(f"[profile] multiple given {_extra}; using {profile}\n")
     _applied = apply_profile(profile, os.environ)
-    if profile in ("fast", "quick"):
+    if profile in ("fast", "quick", "flash"):
         sys.stderr.write(f"[profile] {profile} — {', '.join(f'{k}={v}' for k, v in _applied.items()) or '(all pre-set)'}\n")
     if not args.proposal and not args.input_json and not args.resume_id:
         ap.error("a proposal, --input, or --resume is required")
