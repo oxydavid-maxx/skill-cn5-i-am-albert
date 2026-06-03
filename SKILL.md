@@ -57,3 +57,7 @@ Run **foreground, no `tee`, no redirect** so the transcript streams as it is pro
 `2>&1 |`、丟背景),Albert 會**直接拒絕執行(exit 2)**並提示正確跑法 —— 確保辯論一定看得到。
 真的要非互動執行(CI / 自動化)才加 `--allow-redirect`(或 `ALBERT_ALLOW_REDIRECT=1`);
 cockpit 模式(`--input`/`--json-out`)自動豁免。完整內容仍會存到 `runs/<id>/deliberation.md`。
+
+> 已紅隊測試(2026-06-03):`| tee`、`> 檔案`、`2>&1 |`、`2> err`、背景 `&`、pty 包裝
+> (`script` / `winpty`)全部擋下(exit 2、開跑前攔截、無殘留 run)。偷懶藏不掉辯論;
+> 要繞只剩明知故犯地加 `--allow-redirect`。測試:`tests/test_redirect_refusal.py`。
