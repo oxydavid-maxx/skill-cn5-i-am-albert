@@ -47,11 +47,16 @@ def phase_4_signals_action_gate(state: dict) -> dict:
     state["recommended_next_probe"] = rank_next_probe(res.get("recommended_next_probe") or [])
     state["missing_evidence"] = res.get("missing_evidence") or []
     state["questions_albert_would_ask"] = res.get("questions_albert_would_ask") or []
+    _proposed = res.get("proposed_next_action", "continue_research")
     state["recommended_next_action"] = enforce_action_consistency(
-        res.get("proposed_next_action", "continue_research"), pe_level, dr_level, state["missing_evidence"])
+        _proposed, pe_level, dr_level, state["missing_evidence"])
     state["rationale"] = res.get("rationale") or ""
     state["decision_gate"] = res.get("decision_gate") or dict(_STUB["decision_gate"])
-    state["reproducible_judgment"] = res.get("reproducible_judgment") or ""
+    _rj = res.get("reproducible_judgment") or ""
+    if state["recommended_next_action"] != _proposed:
+        _rj = (_rj + f"（註:LLM 原建議 {_proposed},經訊號否決改為 "
+                     f"{state['recommended_next_action']}。）")
+    state["reproducible_judgment"] = _rj
     # Verdict-presentation fields (formerly phase 5's separate LLM call). Levels
     # + action still come from signals.py above; these are presentation atoms only.
     state["verdict_standalone"] = res.get("verdict_standalone", "要補證據")
