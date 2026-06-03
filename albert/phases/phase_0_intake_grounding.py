@@ -21,6 +21,13 @@ _QUERIES_SCHEMA = {"type": "object", "properties": {
     "meta_question": {"type": "string"}},
     "required": ["queries"]}
 
+def _research_width() -> int:
+    try:
+        return max(1, int(os.environ.get("ALBERT_RESEARCH_WIDTH", "3")))
+    except (TypeError, ValueError):
+        return 3
+
+
 _CARRY = ["current_answer", "original_objective", "meeting_context", "output_purpose",
           "issue_map", "challenge_map", "evidence", "skeptic_output", "source_critic_output",
           "readiness_scores", "recent_research_actions", "research_state", "proposal"]
@@ -59,7 +66,7 @@ def phase_0_intake_grounding(state: dict) -> dict:
             # review UNGROUNDED. 3-at-a-time keeps searches concurrent without the
             # init-timeout.
             queries = (plan.get("queries") or [])[:8]
-            research.extend(parallel_map(websearch, queries, max_workers=3))
+            research.extend(parallel_map(websearch, queries, max_workers=_research_width()))
             # Meta framing comes from the intake plan, not a separate reflection call.
             mq = plan.get("meta_question")
             meta = {"higher_level_question": mq} if mq else {}
