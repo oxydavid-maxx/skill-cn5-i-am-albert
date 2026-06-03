@@ -42,3 +42,14 @@ emitting its deliberation block fails the run (`VisibilityContractError`).
 Run **foreground, no `tee`, no redirect** so the transcript streams as it is produced:
 
     py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py "<proposal>"
+
+## 看辯論過程(同事用)
+
+在終端機直接跑就會**即時**看到辯論卡片(研究 → 拷問 → 三票辯論 → 重做 → 裁決):
+
+    py -3 D:/D-claude/skill-cn5-i-am-albert/run_albert.py "<你的提案>"
+
+不需要任何環境設定 — 程式會自動用 UTF-8 顯示(Windows 也不會亂碼,也不會因編碼錯誤中斷)。
+跑起來會先印一行「▼▼▼ 辯論過程(即時顯示)▼▼▼」,卡片就在下面一張張出現;每張卡片同時存到
+`runs/<run_id>/deliberation.md`,跑完螢幕也會印出報告與辯論全文的路徑。想看即時就**不要**
+`| tee`、`> file` 或丟背景跑 — 那會把即時畫面導走(完整內容仍在 deliberation.md)。
