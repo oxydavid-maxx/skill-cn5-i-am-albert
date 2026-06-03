@@ -155,6 +155,18 @@ SIGNALS_VERDICT_MERGED = {
     "required": SIGNALS_ACTION_GATE["required"] + ["verdict_standalone", "light", "readiness_score_delta"],
 }
 
+# Quick mode: ONE call producing challenges + ambiguities + signals atoms + verdict.
+QUICK_COMBINED = {
+    "type": "object",
+    "properties": {
+        **CHALLENGE_GENERATION["properties"],
+        **SIGNALS_VERDICT_MERGED["properties"],
+    },
+    "required": ["albert_challenges", "top_ambiguities",
+                 "premature_end_atoms", "proposed_next_action",
+                 "verdict_standalone", "light", "readiness_score_delta"],
+}
+
 _RISK = {"type": "object", "properties": {
     "level": {"type": "string", "enum": LEVEL_ENUM}, "atoms": {"type": "object"},
     "grounded_in": {"type": "string", "enum": ["research_state", "inferred"]},
